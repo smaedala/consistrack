@@ -15,6 +15,8 @@ class MetricsService
     public function evaluate(TradingAccount $account): array
     {
         $profitTarget = (float) $account->profit_target;
+        $consistencyRulePercent = (float) ($account->consistency_rule_percent ?? 40);
+        $dailyDrawdownLimitPercent = (float) ($account->daily_drawdown_limit_percent ?? 5);
 
         // Fetch daily sums grouped by date (UTC or account timezone)
         $timezone = $account->timezone ?? 'UTC';
@@ -32,8 +34,9 @@ class MetricsService
 
         // max loss percent relative to initial balance
         $initial = (float) $account->initial_balance;
-        $current = (float) ($account->current_balance ?? $initial);
-        $maxLossPercent = $initial > 0 ? (($initial - $current) / $initial) * 100 : 0.0;
+        $totalPnL = (float) Trade::where('account_id', $account->id)->sum('pnl');
+        $current = $initial + $totalPnL;
+        $maxLossPercent = $initial > 0 ? max(0, (($initial - $current) / $initial) * 100) : 0.0;
 
         // Simple daily drawdown: compute per-day peak-trough based on cumulative PnL
         $dailyDrawdownPercent = 0.0;
@@ -64,22 +67,30 @@ class MetricsService
             }
         }
 
-        $status = $account->status;
-        if ($topDailyPercentOfTarget >= $account->consistency_rule_percent) {
+        $status = $account->status ?: 'active';
+        if ($topDailyPercentOfTarget >= $consistencyRulePercent) {
+            $status = 'breached';
+        }
+        if ($dailyDrawdownPercent >= $dailyDrawdownLimitPercent) {
             $status = 'breached';
         }
         if ($maxLossPercent >= $account->max_loss_limit_percent) {
             $status = 'breached';
         }
 
+        $drawdownRisk = $dailyDrawdownLimitPercent > 0 ? ($dailyDrawdownPercent / $dailyDrawdownLimitPercent) * 100 : 0;
+        $consistencyRisk = $consistencyRulePercent > 0 ? ($topDailyPercentOfTarget / $consistencyRulePercent) * 100 : 0;
+
         return [
-            'totalPnL' => (float) Trade::where('account_id', $account->id)->sum('pnl'),
+            'totalPnL' => $totalPnL,
             'currentBalance' => $current,
             'profitTarget' => $profitTarget,
             'topDailyProfit' => (float) $topDailyProfit,
             'topDailyPercentOfTarget' => round($topDailyPercentOfTarget, 2),
             'dailyDrawdownPercent' => round($dailyDrawdownPercent, 2),
             'maxLossPercent' => round($maxLossPercent, 2),
+            'drawdownRiskPercentOfLimit' => round($drawdownRisk, 2),
+            'consistencyRiskPercentOfLimit' => round($consistencyRisk, 2),
             'status' => $status,
         ];
     }

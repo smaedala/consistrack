@@ -82,7 +82,7 @@ export default function HomePage() {
 
       <header className="nav-wrap">
         <div className="nav-shell">
-          <div className="brand">Smaedala FX</div>
+          <div className="brand">ConsisTracker</div>
           <nav className="nav-links" aria-label="Primary">
             <a href="#features">Features</a>
             <a href="#pricing">Pricing</a>
@@ -132,10 +132,9 @@ export default function HomePage() {
         <section className="hero section-shell" id="features">
           <div className="hero-copy reveal-up">
             <p className="eyebrow">Prop Firm Analytics Platform</p>
-            <h1>Master Your Prop Firm Evaluation. Stay Consistent. Never Breach.</h1>
+            <h1>Master Your Evaluation. Secure Your Funding.</h1>
             <p>
-              Automatically track the 40% rule, manage daily drawdown, and visualize your equity curve with
-              the precision tool built by traders, for traders.
+              Rule Guard monitors 40% and 15% consistency limits in real time, maps trading psychology, and syncs MT4/MT5 journals in one command center.
             </p>
             <div className="hero-actions">
               <Link className="btn btn-glow" to="/register">
@@ -286,7 +285,7 @@ export default function HomePage() {
       <footer className="footer" id="blog">
         <div className="section-shell footer-grid">
           <div>
-            <div className="brand footer-brand">Smaedala FX</div>
+            <div className="brand footer-brand">ConsisTracker</div>
             <div className="socials" aria-label="Social links">
               <a href="#" aria-label="X">
                 X
@@ -300,29 +299,29 @@ export default function HomePage() {
             </div>
           </div>
           <div>
-            <h4>Platform</h4>
-            <a href="#">Dashboard</a>
-            <a href="#">Trade Log</a>
-            <a href="#">Strategy Journal</a>
-            <a href="#">MT4 Sync</a>
+            <h4>Sitemap</h4>
+            <Link to="/dashboard">Dashboard</Link>
+            <Link to="/trade-log">Trade Log</Link>
+            <Link to="/risk-settings">Risk Settings</Link>
+            <Link to="/alerts">Alerts</Link>
           </div>
           <div>
-            <h4>Resources</h4>
-            <a href="#">Blog</a>
-            <a href="#">Prop Firm Rule Guide</a>
-            <a href="#">Help Center</a>
-            <a href="#">API Docs</a>
+            <h4>Legal</h4>
+            <a href="#">Privacy Policy</a>
+            <a href="#">Terms of Service</a>
+            <a href="#">Compliance</a>
+            <a href="#">Data Policy</a>
           </div>
           <div>
-            <h4>Company</h4>
-            <a href="#">About Us</a>
-            <a href="#">Careers</a>
-            <a href="#">Contact</a>
-            <a href="#">Press</a>
+            <h4>Tools</h4>
+            <a href="#">Rule Presets</a>
+            <a href="#">MT4/5 Sync</a>
+            <a href="#">Psychology Map</a>
+            <a href="#">Strategy Matrix</a>
           </div>
         </div>
         <div className="footer-bottom section-shell">
-          <p>Copyright © 2024 Smaedala Technologies.</p>
+          <p>Copyright © 2024 Smaedala FX.</p>
           <div>
             <a href="#">Privacy Policy</a>
             <span>|</span>

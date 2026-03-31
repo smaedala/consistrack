@@ -26,16 +26,42 @@ class AccountController extends Controller
 
         $data = $request->validate([
             'account_name' => 'required|string',
-            'initial_balance' => 'required|numeric',
-            'profit_target' => 'required|numeric',
-            'consistency_rule_percent' => 'integer',
-            'timezone' => 'string',
+            'initial_balance' => 'required|numeric|min:0',
+            'current_balance' => 'nullable|numeric|min:0',
+            'profit_target' => 'required|numeric|min:0',
+            'consistency_rule_percent' => 'nullable|integer|min:1|max:100',
+            'daily_drawdown_limit_percent' => 'nullable|integer|min:1|max:100',
+            'max_loss_limit_percent' => 'nullable|integer|min:1|max:100',
+            'timezone' => 'nullable|string',
+            'status' => 'nullable|in:active,passed,breached',
         ]);
 
         $data['user_id'] = $user->id;
+        $data['current_balance'] = $data['current_balance'] ?? $data['initial_balance'];
 
         $account = TradingAccount::create($data);
 
         return response()->json(['success' => true, 'data' => $account, 'message' => 'Account created'], 201);
+    }
+
+    public function update(Request $request, TradingAccount $account)
+    {
+        $this->authorize('update', $account);
+
+        $data = $request->validate([
+            'account_name' => 'sometimes|string',
+            'initial_balance' => 'sometimes|numeric|min:0',
+            'current_balance' => 'sometimes|numeric|min:0',
+            'profit_target' => 'sometimes|numeric|min:0',
+            'consistency_rule_percent' => 'sometimes|integer|min:1|max:100',
+            'daily_drawdown_limit_percent' => 'sometimes|integer|min:1|max:100',
+            'max_loss_limit_percent' => 'sometimes|integer|min:1|max:100',
+            'timezone' => 'sometimes|string',
+            'status' => 'sometimes|in:active,passed,breached',
+        ]);
+
+        $account->update($data);
+
+        return response()->json(['success' => true, 'data' => $account->fresh(), 'message' => 'Account updated']);
     }
 }

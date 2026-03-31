@@ -6,6 +6,9 @@ import LoginPage from './pages/LoginPage'
 import RegisterPage from './pages/RegisterPage'
 import Dashboard from './pages/Dashboard'
 import HomePage from './pages/HomePage'
+import TradeLogPage from './pages/TradeLogPage'
+import RiskSettingsPage from './pages/RiskSettingsPage'
+import AlertsPage from './pages/AlertsPage'
 import './index.css'
 
 axios.defaults.baseURL = '/api/v1'
@@ -20,6 +23,9 @@ function App(){
         <Route path="/login" element={<LoginPage/>} />
         <Route path="/register" element={<RegisterPage/>} />
         <Route path="/dashboard" element={<Dashboard/>} />
+        <Route path="/trade-log" element={<TradeLogPage/>} />
+        <Route path="/risk-settings" element={<RiskSettingsPage/>} />
+        <Route path="/alerts" element={<AlertsPage/>} />
         <Route path="*" element={<Navigate to='/' />} />
       </Routes>
     </BrowserRouter>

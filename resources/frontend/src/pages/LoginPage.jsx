@@ -61,7 +61,7 @@ function TrendLogo() {
           <path d="M4 18h16v2H2V4h2v14Zm4-3 3.5-3.5 2.8 2.8L20 8.6V12h2V5h-7v2h3.6l-4.3 4.3-2.8-2.8L6 13.6 8 15Z" />
         </svg>
       </div>
-      <span>Smaedala FX</span>
+      <span>ConsisTracker</span>
     </div>
   )
 }
