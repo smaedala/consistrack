@@ -1,10 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 
 const START_BALANCE = 100000
 const MAX_DRAWDOWN_RULE = 5
 const CONSISTENCY_RULE = 40
+
+function formatMoney(value) {
+  return Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
 
 function dayKey(dateString) {
   if (!dateString) return 'N/A'
@@ -19,210 +23,173 @@ function dayLabel(dateKey) {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-function moodFromPnl(pnl) {
-  if (pnl >= 250) return { label: 'Calm', tone: 'green' }
-  if (pnl >= 0) return { label: 'Focused', tone: 'cyan' }
-  if (pnl <= -250) return { label: 'FOMO', tone: 'red' }
-  return { label: 'Frustrated', tone: 'yellow' }
+function getMood(pnl) {
+  if (pnl >= 120) return { label: 'Calm', cls: 'calm' }
+  if (pnl >= 0) return { label: 'Focused', cls: 'focus' }
+  if (pnl <= -120) return { label: 'FOMO', cls: 'fomo' }
+  return { label: 'Aggressive', cls: 'stress' }
 }
 
-function statusFromPct(pct) {
-  if (pct >= 100) return 'red'
-  if (pct >= 70) return 'yellow'
-  return 'green'
+function getStatusFromPct(pct) {
+  if (pct >= 100) return { label: 'WARNING (BREACH)', cls: 'danger' }
+  if (pct >= 70) return { label: 'WARNING', cls: 'warn' }
+  return { label: 'SAFE (PASSING)', cls: 'safe' }
 }
 
-function NavGridIcon() {
+function IconGrid() {
+  return <svg viewBox="0 0 24 24"><path d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z" /></svg>
+}
+
+function IconMatrix() {
+  return <svg viewBox="0 0 24 24"><path d="M3 3h18v18H3V3Zm2 2v4h4V5H5Zm6 0v4h8V5h-8ZM5 11v8h4v-8H5Zm6 0v3h8v-3h-8Zm0 5v3h8v-3h-8Z" /></svg>
+}
+
+function IconPsychology() {
+  return <svg viewBox="0 0 24 24"><path d="M12 2a8 8 0 0 0-4 14.9V20a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-3.1A8 8 0 0 0 12 2Zm2 17h-4v-1h4v1Zm.2-4.3-.7.4V16h-3v-.9l-.7-.4a5.6 5.6 0 1 1 4.8 0Z" /></svg>
+}
+
+function IconRules() {
+  return <svg viewBox="0 0 24 24"><path d="M12 2 3 6v6c0 5.2 3.4 9.8 9 12 5.6-2.2 9-6.8 9-12V6l-9-4Zm0 2.2 7 3.1v4.6c0 4.1-2.6 8-7 9.9-4.4-1.9-7-5.8-7-9.9V7.3l7-3.1Z" /></svg>
+}
+
+function IconSettings() {
+  return <svg viewBox="0 0 24 24"><path d="m12 8.5 2.4-1.4 2 1.1v2.7l-2.4 1.4-2-1.1V8.5Zm0-6.5 2 1.2.4 2.3 2 .8 1.9-1 2 1.2-.1 2.2 1.6 1.4 2.2-.2v2.4l-2.2.6-.9 2 1.1 1.9-1.2 2-2.2-.1-1.4 1.6.2 2.2H12l-.6-2.2-2-.9-1.9 1.1-2-1.2.1-2.2-1.6-1.4-2.2.2V12l2.2-.6.9-2-1.1-1.9 1.2-2 2.2.1 1.4-1.6L8 2h4Z" /></svg>
+}
+
+function Sparkline({ points = [] }) {
+  if (!points || points.length < 2) return null
+
+  const max = Math.max(...points)
+  const min = Math.min(...points)
+  const range = Math.max(max - min, 1)
+
+  const line = points.map((value, i) => {
+    const x = (i / (points.length - 1)) * 100
+    const y = 76 - ((value - min) / range) * 52
+    return `${x},${y}`
+  }).join(' ')
+
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z" />
+    <svg className="elite-spark" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      <polyline points={line} fill="none" stroke="#10B981" strokeWidth="4" strokeLinecap="round" />
     </svg>
   )
 }
 
-function NavTradeIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M6 3h9l5 5v13H6V3Zm2 2v14h10V9h-4V5H8Zm2 6h6v2h-6v-2Z" />
-    </svg>
-  )
-}
-
-function NavRiskIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 2 3 6v6c0 5.2 3.4 9.8 9 12 5.6-2.2 9-6.8 9-12V6l-9-4Zm0 2.2 7 3.1v4.6c0 4.1-2.6 8-7 9.9-4.4-1.9-7-5.8-7-9.9V7.3l7-3.1Z" />
-    </svg>
-  )
-}
-
-function NavChartIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M4 19h16v2H2V3h2v16Zm3-3 3.8-4.2 3.1 2.8L19 8.5V12h2V5h-7v2h3.6l-3.9 4.3-3.1-2.8L5.5 14 7 16Z" />
-    </svg>
-  )
-}
-
-function NavBellIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 2a6 6 0 0 0-6 6v3.3L4.3 14a1 1 0 0 0 .8 1.6h13.8a1 1 0 0 0 .8-1.6L18 11.3V8a6 6 0 0 0-6-6Zm0 20a2.8 2.8 0 0 0 2.6-1.8h-5.2A2.8 2.8 0 0 0 12 22Z" />
-    </svg>
-  )
-}
-
-function MiniSparkline({ points }) {
-  const path = useMemo(() => {
-    if (points.length < 2) return ''
-    const max = Math.max(...points)
-    const min = Math.min(...points)
-    const range = Math.max(max - min, 1)
-    return points
-      .map((v, i) => {
-        const x = (i / (points.length - 1)) * 100
-        const y = 85 - ((v - min) / range) * 70
-        return `${x},${y}`
-      })
-      .join(' ')
-  }, [points])
-
-  return (
-    <svg className="dash4-sparkline" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-      <polyline points={path} fill="none" stroke="#00F2FE" strokeWidth="4" />
-    </svg>
-  )
-}
-
-function MetricCard({ title, value, caption, progress, progressColor, statusTone, sparkline, animated }) {
-  return (
-    <article className={`dash4-card ${statusTone ? `dash4-card-${statusTone}` : ''}`}>
-      <p>{title}</p>
-      <div className="dash4-value-row">
-        <h3>{value}</h3>
-        {sparkline ? <MiniSparkline points={sparkline} /> : null}
-      </div>
-      <small>{caption}</small>
-      {typeof progress === 'number' && (
-        <div className="dash4-progress">
-          <span style={{ width: `${animated ? progress : 0}%`, background: progressColor }} />
-        </div>
-      )}
-    </article>
-  )
-}
-
-function InteractiveChart({ data, selectedDay, onSelectDay }) {
-  const chartRef = useRef(null)
+function EquityChart({ series, selectedDay, onSelectDay }) {
+  const ref = useRef(null)
   const [hovered, setHovered] = useState(null)
 
   const points = useMemo(() => {
-    if (!data.length) return []
-    const max = Math.max(...data.map((d) => d.balance))
-    const min = Math.min(...data.map((d) => d.balance))
+    if (!series.length) return []
+    const max = Math.max(...series.map((d) => d.balance))
+    const min = Math.min(...series.map((d) => d.balance))
     const range = Math.max(max - min, 1)
-    return data.map((d, i) => ({
+
+    return series.map((d, idx) => ({
       ...d,
-      x: (i / Math.max(data.length - 1, 1)) * 100,
-      y: 76 - ((d.balance - min) / range) * 34,
+      x: (idx / Math.max(series.length - 1, 1)) * 100,
+      y: 76 - ((d.balance - min) / range) * 54,
     }))
-  }, [data])
+  }, [series])
 
-  const linePath = points.map((p) => `${p.x},${p.y}`).join(' ')
+  const path = points.map((p) => `${p.x},${p.y}`).join(' ')
 
-  function handleMove(evt) {
-    if (!chartRef.current || !points.length) return
-    const rect = chartRef.current.getBoundingClientRect()
-    const relX = ((evt.clientX - rect.left) / rect.width) * 100
+  function onMove(event) {
+    if (!ref.current || !points.length) return
+    const rect = ref.current.getBoundingClientRect()
+    const rx = ((event.clientX - rect.left) / rect.width) * 100
+
     let nearest = points[0]
-    let nearestDistance = Math.abs(points[0].x - relX)
+    let dist = Math.abs(points[0].x - rx)
+
     for (let i = 1; i < points.length; i += 1) {
-      const distance = Math.abs(points[i].x - relX)
-      if (distance < nearestDistance) {
+      const d = Math.abs(points[i].x - rx)
+      if (d < dist) {
+        dist = d
         nearest = points[i]
-        nearestDistance = distance
       }
     }
+
     setHovered(nearest)
   }
 
   return (
-    <div className="dash4-chart">
+    <article className="elite-card elite-chart-card" id="overview-section">
       <h3>Equity Curve</h3>
-      <div className="dash4-chart-inner" ref={chartRef} onMouseMove={handleMove} onMouseLeave={() => setHovered(null)}>
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Interactive equity curve">
+      <div className="elite-chart-inner" ref={ref} onMouseMove={onMove} onMouseLeave={() => setHovered(null)}>
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Night-sky equity curve">
           <defs>
-            <linearGradient id="dash4Fill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="rgba(0,242,254,0.34)" />
-              <stop offset="100%" stopColor="rgba(0,242,254,0.02)" />
+            <linearGradient id="eliteFill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="rgba(0,242,254,0.35)" />
+              <stop offset="100%" stopColor="rgba(0,242,254,0.03)" />
             </linearGradient>
           </defs>
-          <rect x="0" y="0" width="100" height="100" fill="#161b24" />
+          <rect x="0" y="0" width="100" height="100" fill="#111722" />
           <polyline points="0,20 100,20" stroke="rgba(255,255,255,0.08)" strokeDasharray="2 2" fill="none" />
           <polyline points="0,50 100,50" stroke="rgba(255,255,255,0.08)" strokeDasharray="2 2" fill="none" />
           <polyline points="0,80 100,80" stroke="rgba(255,255,255,0.08)" strokeDasharray="2 2" fill="none" />
-          {linePath && (
+          {path ? (
             <>
-              <polygon points={`0,100 ${linePath} 100,100`} fill="url(#dash4Fill)" />
-              <polyline points={linePath} fill="none" stroke="#00F2FE" strokeWidth="0.9" />
+              <polygon points={`0,100 ${path} 100,100`} fill="url(#eliteFill)" />
+              <polyline points={path} fill="none" stroke="#00F2FE" strokeWidth="0.9" strokeLinecap="round" />
             </>
-          )}
+          ) : null}
           {points.map((p) => (
             <circle
               key={p.dayKey}
               cx={p.x}
               cy={p.y}
               r={selectedDay === p.dayKey ? 1.4 : 1}
-              className={`dash4-dot ${selectedDay === p.dayKey ? 'active' : ''}`}
+              className={`elite-pip ${selectedDay === p.dayKey ? 'active' : ''}`}
               onClick={() => onSelectDay(selectedDay === p.dayKey ? null : p.dayKey)}
             />
           ))}
         </svg>
-        {hovered && (
-          <div className="dash4-tooltip" style={{ left: `${hovered.x}%`, top: `${hovered.y}%` }}>
+        {hovered ? (
+          <div className="elite-tooltip" style={{ left: `${hovered.x}%`, top: `${hovered.y}%` }}>
             <strong>{dayLabel(hovered.dayKey)}</strong>
-            <span>Balance: €{hovered.balance.toLocaleString()}</span>
-            <span>Daily PnL: {hovered.dailyPnl >= 0 ? '+' : ''}{hovered.dailyPnl.toLocaleString()}</span>
-            <span>Total Trades: {hovered.totalTrades}</span>
+            <span>Balance: €{formatMoney(hovered.balance)}</span>
+            <span>Daily PnL: {hovered.dailyPnl >= 0 ? '+' : ''}{formatMoney(hovered.dailyPnl)}</span>
+            <span>Trades: {hovered.totalTrades}</span>
           </div>
-        )}
+        ) : null}
       </div>
-      <div className="dash4-axis">
-        {data.map((d, i) => (i % Math.ceil(data.length / 8) === 0 || i === data.length - 1 ? <span key={d.dayKey}>{dayLabel(d.dayKey)}</span> : <span key={d.dayKey} />))}
+      <div className="elite-axis">
+        {series.map((d, i) => (i % Math.ceil(series.length / 8 || 1) === 0 || i === series.length - 1 ? <span key={d.dayKey}>{dayLabel(d.dayKey)}</span> : <span key={d.dayKey} />))}
       </div>
-      {selectedDay && (
-        <div className="dash4-filter-pill">
-          Filtered by: {dayLabel(selectedDay)} <button type="button" onClick={() => onSelectDay(null)}>Clear</button>
-        </div>
-      )}
-    </div>
+    </article>
   )
 }
 
 export default function Dashboard() {
   const navigate = useNavigate()
-  const location = useLocation()
+
   const [activeAccount, setActiveAccount] = useState(null)
   const [metrics, setMetrics] = useState(null)
   const [trades, setTrades] = useState([])
+
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [actionMessage, setActionMessage] = useState(null)
+  const [actionError, setActionError] = useState(null)
+
   const [selectedDay, setSelectedDay] = useState(null)
   const [search, setSearch] = useState('')
   const [setupFilter, setSetupFilter] = useState('all')
+
   const [isSidebarOpen, setSidebarOpen] = useState(true)
+  const [profileOpen, setProfileOpen] = useState(false)
   const [whatIfBoost, setWhatIfBoost] = useState(0)
-  const [animatedBars, setAnimatedBars] = useState(false)
-  const [daysTimer, setDaysTimer] = useState({ days: 0, hours: 0 })
-  const [creatingAccount, setCreatingAccount] = useState(false)
-  const [setupMessage, setSetupMessage] = useState(null)
-  const [actionMessage, setActionMessage] = useState(null)
-  const [actionError, setActionError] = useState(null)
+
   const [showAddTradeModal, setShowAddTradeModal] = useState(false)
   const [showCsvModal, setShowCsvModal] = useState(false)
   const [submittingTrade, setSubmittingTrade] = useState(false)
   const [importingCsv, setImportingCsv] = useState(false)
   const [csvFile, setCsvFile] = useState(null)
+
+  const [daysTimer, setDaysTimer] = useState({ days: 0, hours: 0 })
+
   const [tradeForm, setTradeForm] = useState({
     symbol: '',
     type: 'buy',
@@ -233,6 +200,7 @@ export default function Dashboard() {
     entry_price: '',
     exit_price: '',
   })
+
   const [setupForm, setSetupForm] = useState({
     account_name: '',
     initial_balance: '',
@@ -241,15 +209,15 @@ export default function Dashboard() {
     daily_drawdown_limit_percent: '',
     max_loss_limit_percent: '',
     timezone: 'UTC',
-    trade_source: '',
   })
 
   async function loadDashboardData() {
     try {
       setLoading(true)
       setError(null)
+
       const accounts = await axios.get('/accounts')
-      const account = accounts.data.data[0] || null
+      const account = accounts.data.data?.[0] || null
       setActiveAccount(account)
 
       if (!account) {
@@ -262,15 +230,16 @@ export default function Dashboard() {
         axios.get(`/accounts/${account.id}/metrics`),
         axios.get(`/accounts/${account.id}/trades`),
       ])
+
       setMetrics(m.data.data)
-      const items = t.data.data.data || t.data.data
+      const items = t.data.data.data || t.data.data || []
       setTrades(Array.isArray(items) ? items : [])
     } catch (err) {
-      if (err.response && err.response.status === 401) {
+      if (err.response?.status === 401) {
         navigate('/login')
         return
       }
-      setError(err.response?.data?.message || 'Failed to load dashboard data.')
+      setError(err.response?.data?.message || 'Failed to load command center data.')
     } finally {
       setLoading(false)
     }
@@ -278,11 +247,6 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadDashboardData()
-  }, [navigate])
-
-  useEffect(() => {
-    const id = setTimeout(() => setAnimatedBars(true), 130)
-    return () => clearTimeout(id)
   }, [])
 
   const normalizedTrades = useMemo(() => {
@@ -292,7 +256,7 @@ export default function Dashboard() {
       setup: t.strategy_tag || 'General',
       close_time: t.close_time || new Date().toISOString(),
       dayKey: dayKey(t.close_time),
-      emotion: moodFromPnl(Number(t.pnl || 0)),
+      mood: getMood(Number(t.pnl || 0)),
     }))
   }, [trades])
 
@@ -302,69 +266,69 @@ export default function Dashboard() {
       if (!map.has(t.dayKey)) {
         map.set(t.dayKey, { dayKey: t.dayKey, dailyPnl: 0, totalTrades: 0 })
       }
-      const day = map.get(t.dayKey)
-      day.dailyPnl += Number(t.pnl || 0)
-      day.totalTrades += 1
+      const row = map.get(t.dayKey)
+      row.dailyPnl += t.pnl
+      row.totalTrades += 1
     })
 
     const sorted = Array.from(map.values()).sort((a, b) => a.dayKey.localeCompare(b.dayKey))
     let balance = Number(activeAccount?.initial_balance || START_BALANCE)
+
     return sorted.map((d) => {
       balance += d.dailyPnl
-      return { ...d, balance: Math.round(balance) }
+      return { ...d, balance }
     })
   }, [normalizedTrades, activeAccount?.initial_balance])
 
-  const equity = Number(metrics?.currentBalance || (dailySeries.at(-1)?.balance || activeAccount?.initial_balance || START_BALANCE))
+  useEffect(() => {
+    const usedTradingDays = Math.max(1, dailySeries.length)
+    const daysRemaining = Math.max(0, 30 - usedTradingDays)
+
+    const tick = () => {
+      const now = new Date()
+      const nextHour = new Date(now)
+      nextHour.setHours(now.getHours() + 1, 0, 0, 0)
+      const diff = Math.max(0, nextHour.getTime() - now.getTime())
+      setDaysTimer({ days: daysRemaining, hours: Math.floor(diff / (1000 * 60 * 60)) })
+    }
+
+    tick()
+    const timer = setInterval(tick, 60000)
+    return () => clearInterval(timer)
+  }, [dailySeries.length])
+
+  const equity = Number(metrics?.currentBalance || dailySeries.at(-1)?.balance || activeAccount?.initial_balance || START_BALANCE)
+  const initialBalance = Number(activeAccount?.initial_balance || START_BALANCE)
+  const totalProfit = Math.max(0, equity - initialBalance)
+
   const profitTarget = Number(metrics?.profitTarget || activeAccount?.profit_target || 10000)
-  const consistencyRulePercent = Number(activeAccount?.consistency_rule_percent || CONSISTENCY_RULE)
-  const dailyDrawdownLimitPercent = Number(activeAccount?.daily_drawdown_limit_percent || MAX_DRAWDOWN_RULE)
-  const maxLossLimitPercent = Number(activeAccount?.max_loss_limit_percent || 10)
+  const consistencyLimit = Number(activeAccount?.consistency_rule_percent || CONSISTENCY_RULE)
+  const dailyDrawdownLimit = Number(activeAccount?.daily_drawdown_limit_percent || MAX_DRAWDOWN_RULE)
+  const maxLossLimit = Number(activeAccount?.max_loss_limit_percent || 10)
+
   const dailyDrawdownPercent = Number(metrics?.dailyDrawdownPercent || 0)
   const maxLossPercent = Number(metrics?.maxLossPercent || 0)
-  const totalProfit = Math.max(0, equity - Number(activeAccount?.initial_balance || START_BALANCE))
   const topDayPctRaw = Number(metrics?.topDailyPercentOfTarget || 0)
   const topDayProfitEstimate = (topDayPctRaw / 100) * totalProfit
-  const simulatedPct = (topDayProfitEstimate / Math.max(totalProfit + whatIfBoost, 1)) * 100
-  const consistencyPct = whatIfBoost > 0 ? simulatedPct : topDayPctRaw
+  const whatIfConsistency = (topDayProfitEstimate / Math.max(totalProfit + whatIfBoost, 1)) * 100
+  const consistencyPct = whatIfBoost > 0 ? whatIfConsistency : topDayPctRaw
 
-  const dailyDrawdownUsedPct = Math.min(100, Math.max(0, (dailyDrawdownPercent / Math.max(dailyDrawdownLimitPercent, 0.01)) * 100))
-  const consistencyUsedPct = Math.min(100, Math.max(0, (consistencyPct / Math.max(consistencyRulePercent, 0.01)) * 100))
-  const maxLossUsedPct = Math.min(100, Math.max(0, (maxLossPercent / Math.max(maxLossLimitPercent, 0.01)) * 100))
-  const drawdownTone = statusFromPct(dailyDrawdownUsedPct)
-  const consistencyTone = statusFromPct(consistencyUsedPct)
+  const progressToTargetPct = Math.min(100, Math.max(0, (totalProfit / Math.max(profitTarget, 1)) * 100))
+  const drawdownUsagePct = Math.min(100, Math.max(0, (dailyDrawdownPercent / Math.max(dailyDrawdownLimit, 0.01)) * 100))
+  const consistencyUsagePct = Math.min(100, Math.max(0, (consistencyPct / Math.max(consistencyLimit, 0.01)) * 100))
+  const liquidationDistancePct = Math.max(0, Math.min(100, 100 - ((maxLossPercent / Math.max(maxLossLimit, 0.01)) * 100)))
 
-  const drawdownLimitAmount = Number(activeAccount?.initial_balance || START_BALANCE) * (dailyDrawdownLimitPercent / 100)
-  const drawdownUsedAmount = Number(activeAccount?.initial_balance || START_BALANCE) * (dailyDrawdownPercent / 100)
-  const dailyLossRemaining = Math.max(0, Math.round(drawdownLimitAmount - drawdownUsedAmount))
-  const distanceToLiquidation = Math.max(0, Math.round(100 - maxLossUsedPct))
-  const profitProgress = Math.min(100, Math.max(0, (totalProfit / Math.max(profitTarget, 1)) * 100))
+  const consistencyState = getStatusFromPct(consistencyUsagePct)
+  const drawdownState = getStatusFromPct(drawdownUsagePct)
 
-  const riskAlerts = useMemo(() => {
-    if (!activeAccount) return []
-    const alerts = []
-    if (dailyDrawdownUsedPct >= 100) {
-      alerts.push({ tone: 'red', text: 'Daily drawdown limit breached. Stop trading on this account today.' })
-    } else if (dailyDrawdownUsedPct >= 70) {
-      alerts.push({ tone: 'yellow', text: `Daily drawdown at ${dailyDrawdownPercent.toFixed(2)}% / ${dailyDrawdownLimitPercent}% limit.` })
-    } else {
-      alerts.push({ tone: 'green', text: 'Daily drawdown is within safe range.' })
-    }
+  const dailyLossBufferAmount = initialBalance * (dailyDrawdownLimit / 100)
+  const dailyLossUsedAmount = initialBalance * (dailyDrawdownPercent / 100)
+  const dailyLossRemaining = Math.max(0, dailyLossBufferAmount - dailyLossUsedAmount)
 
-    if (consistencyUsedPct >= 100) {
-      alerts.push({ tone: 'red', text: `Consistency breach risk reached ${consistencyPct.toFixed(1)}% / ${consistencyRulePercent}%.` })
-    } else if (consistencyUsedPct >= 70) {
-      alerts.push({ tone: 'yellow', text: `Consistency warning: ${consistencyPct.toFixed(1)}% / ${consistencyRulePercent}%.` })
-    } else {
-      alerts.push({ tone: 'green', text: 'Consistency profile is safe for now.' })
-    }
-
-    if (maxLossUsedPct >= 100 || activeAccount?.status === 'breached') {
-      alerts.push({ tone: 'red', text: 'Account is marked breached by max loss rule.' })
-    }
-
-    return alerts
-  }, [activeAccount, consistencyPct, consistencyRulePercent, consistencyUsedPct, dailyDrawdownLimitPercent, dailyDrawdownPercent, dailyDrawdownUsedPct, maxLossUsedPct])
+  const sparklinePoints = useMemo(() => {
+    const values = dailySeries.slice(-7).map((d) => d.balance)
+    return values.length >= 2 ? values : [initialBalance - 200, initialBalance - 80, initialBalance + 40, initialBalance + 120, initialBalance + 180, initialBalance + 230, equity]
+  }, [dailySeries, initialBalance, equity])
 
   const setupOptions = useMemo(() => ['all', ...Array.from(new Set(normalizedTrades.map((t) => t.setup)))], [normalizedTrades])
 
@@ -378,64 +342,58 @@ export default function Dashboard() {
     })
   }, [normalizedTrades, selectedDay, setupFilter, search])
 
-  const sparklinePoints = useMemo(() => {
-    const slice = dailySeries.slice(-7).map((d) => d.balance)
-    return slice.length >= 2 ? slice : null
-  }, [dailySeries])
+  const strategyMatrix = useMemo(() => {
+    const presets = ['Silver Bullet', 'Judas Swing', 'London Open']
+    return presets.map((preset) => {
+      const rows = normalizedTrades.filter((t) => t.setup.toLowerCase() === preset.toLowerCase())
+      if (!rows.length) return { setup: preset, winRate: 0, pf: 0, expectancy: 0 }
 
-  const strategyBreakdown = useMemo(() => {
-    const map = new Map()
-    normalizedTrades.forEach((t) => {
-      if (!map.has(t.setup)) {
-        map.set(t.setup, { setup: t.setup, trades: 0, wins: 0, pnl: 0, grossWin: 0, grossLoss: 0 })
-      }
-      const s = map.get(t.setup)
-      s.trades += 1
-      s.pnl += t.pnl
-      if (t.pnl >= 0) {
-        s.wins += 1
-        s.grossWin += t.pnl
-      } else {
-        s.grossLoss += Math.abs(t.pnl)
+      const wins = rows.filter((t) => t.pnl > 0)
+      const losses = rows.filter((t) => t.pnl < 0)
+      const grossWin = wins.reduce((sum, t) => sum + t.pnl, 0)
+      const grossLoss = Math.abs(losses.reduce((sum, t) => sum + t.pnl, 0))
+      const net = rows.reduce((sum, t) => sum + t.pnl, 0)
+
+      return {
+        setup: preset,
+        winRate: (wins.length / rows.length) * 100,
+        pf: grossLoss > 0 ? grossWin / grossLoss : (grossWin > 0 ? 99 : 0),
+        expectancy: net / rows.length,
       }
     })
-    return Array.from(map.values()).map((s) => ({
-      ...s,
-      winRate: s.trades ? Math.round((s.wins / s.trades) * 100) : 0,
-      profitFactor: s.grossLoss > 0 ? s.grossWin / s.grossLoss : s.grossWin > 0 ? 99 : 0,
-    }))
   }, [normalizedTrades])
 
-  const ictStrategyMatrix = useMemo(() => {
-    const target = ['Silver Bullet', 'London Open', 'Judas Swing']
-    return target.map((name) => {
-      const match = strategyBreakdown.find((s) => s.setup.toLowerCase() === name.toLowerCase())
-      if (match) return match
-      return { setup: name, profitFactor: 0, trades: 0, winRate: 0, pnl: 0, expectancy: 0 }
+  const heatmapCells = useMemo(() => {
+    const byDay = new Map()
+    normalizedTrades.forEach((t) => {
+      byDay.set(t.dayKey, (byDay.get(t.dayKey) || 0) + t.pnl)
     })
-  }, [strategyBreakdown])
 
-  const heatmapDays = useMemo(() => dailySeries.slice(-21).map((d) => ({ ...d, mood: moodFromPnl(d.dailyPnl) })), [dailySeries])
-
-  useEffect(() => {
-    const usedTradingDays = Math.max(1, dailySeries.length)
-    const daysRemaining = Math.max(0, 30 - usedTradingDays)
-    const tick = () => {
-      const now = new Date()
-      const nextHour = new Date(now)
-      nextHour.setHours(now.getHours() + 1, 0, 0, 0)
-      const diff = Math.max(0, nextHour.getTime() - now.getTime())
-      setDaysTimer({ days: daysRemaining, hours: Math.floor(diff / (1000 * 60 * 60)) })
+    const cells = []
+    const today = new Date()
+    for (let i = 83; i >= 0; i -= 1) {
+      const d = new Date(today)
+      d.setDate(today.getDate() - i)
+      const key = d.toISOString().slice(0, 10)
+      const pnl = byDay.get(key) || 0
+      cells.push({ key, pnl, mood: getMood(pnl) })
     }
-    tick()
-    const timer = setInterval(tick, 60 * 1000)
-    return () => clearInterval(timer)
-  }, [dailySeries.length])
+    return cells
+  }, [normalizedTrades])
+
+  function setupField(key) {
+    return (e) => setSetupForm((prev) => ({ ...prev, [key]: e.target.value }))
+  }
+
+  function tradeField(key) {
+    return (e) => setTradeForm((prev) => ({ ...prev, [key]: e.target.value }))
+  }
 
   async function handleCreateAccount(e) {
     e.preventDefault()
-    setCreatingAccount(true)
-    setSetupMessage(null)
+    setActionError(null)
+    setActionMessage(null)
+
     try {
       await axios.post('/accounts', {
         account_name: setupForm.account_name,
@@ -448,43 +406,25 @@ export default function Dashboard() {
         timezone: setupForm.timezone || 'UTC',
         status: 'active',
       })
-      setSetupMessage('Account created successfully. Your live dashboard is ready.')
+
+      setActionMessage('Account created successfully. Command center is now live.')
       await loadDashboardData()
     } catch (err) {
-      setSetupMessage(err.response?.data?.message || 'Failed to create account. Please check your fields.')
-    } finally {
-      setCreatingAccount(false)
+      setActionError(err.response?.data?.message || 'Failed to create account.')
     }
-  }
-
-  const setupSteps = [
-    { label: 'Firm & Challenge Type', done: Boolean(activeAccount?.account_name || setupForm.account_name) },
-    { label: 'Rule Limits', done: Boolean((activeAccount?.consistency_rule_percent || setupForm.consistency_rule_percent) && (activeAccount?.daily_drawdown_limit_percent || setupForm.daily_drawdown_limit_percent)) },
-    { label: 'Starting Balance', done: Number(activeAccount?.initial_balance || setupForm.initial_balance || 0) > 0 },
-    { label: 'Trade Source', done: Boolean(setupForm.trade_source) },
-  ]
-
-  const setupDoneCount = setupSteps.filter((s) => s.done).length
-  const setupProgress = Math.round((setupDoneCount / setupSteps.length) * 100)
-
-  function setupField(key) {
-    return (e) => setSetupForm((prev) => ({ ...prev, [key]: e.target.value }))
-  }
-
-  function tradeField(key) {
-    return (e) => setTradeForm((prev) => ({ ...prev, [key]: e.target.value }))
   }
 
   async function handleAddTradeSubmit(e) {
     e.preventDefault()
     if (!activeAccount) {
-      setActionError('Create an account first before adding trades.')
+      setActionError('Create an account before adding trades.')
       return
     }
 
     setSubmittingTrade(true)
     setActionError(null)
     setActionMessage(null)
+
     try {
       await axios.post(`/accounts/${activeAccount.id}/trades`, {
         symbol: tradeForm.symbol.trim().toUpperCase(),
@@ -497,7 +437,7 @@ export default function Dashboard() {
         exit_price: tradeForm.exit_price ? Number(tradeForm.exit_price) : null,
       })
 
-      setActionMessage('Trade added successfully and metrics refreshed.')
+      setActionMessage('Trade added and metrics refreshed.')
       setShowAddTradeModal(false)
       setTradeForm((prev) => ({ ...prev, symbol: '', pnl: '', strategy_tag: '', entry_price: '', exit_price: '' }))
       await loadDashboardData()
@@ -511,7 +451,7 @@ export default function Dashboard() {
   async function handleCsvImportSubmit(e) {
     e.preventDefault()
     if (!activeAccount) {
-      setActionError('Create an account first before importing CSV.')
+      setActionError('Create an account before importing CSV.')
       return
     }
     if (!csvFile) {
@@ -524,14 +464,16 @@ export default function Dashboard() {
     setActionMessage(null)
 
     try {
-      const formData = new FormData()
-      formData.append('account_id', String(activeAccount.id))
-      formData.append('csv_file', csvFile)
-      const res = await axios.post(`/accounts/${activeAccount.id}/import-csv`, formData, {
+      const form = new FormData()
+      form.append('account_id', String(activeAccount.id))
+      form.append('csv_file', csvFile)
+
+      const res = await axios.post(`/accounts/${activeAccount.id}/import-csv`, form, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      const result = res.data?.data || {}
-      setActionMessage(`CSV imported. Added ${result.imported ?? 0} trades, skipped ${result.duplicates ?? 0} duplicates.`)
+
+      const data = res.data?.data || {}
+      setActionMessage(`CSV imported. Added ${data.imported ?? 0}, skipped ${data.duplicates ?? 0} duplicates.`)
       setShowCsvModal(false)
       setCsvFile(null)
       await loadDashboardData()
@@ -542,262 +484,147 @@ export default function Dashboard() {
     }
   }
 
-  const navGroups = [
-    {
-      title: 'Workspace',
-      items: [
-        { key: 'dashboard', path: '/dashboard', label: 'Dashboard', icon: <NavGridIcon /> },
-        { key: 'trade-log', path: '/trade-log', label: 'Trade Log', icon: <NavTradeIcon /> },
-        { key: 'risk', path: '/risk-settings', label: 'Risk Settings', icon: <NavRiskIcon /> },
-      ],
-    },
-    {
-      title: 'Insights',
-      items: [
-        { key: 'analytics', path: '/dashboard', label: 'Analytics', icon: <NavChartIcon /> },
-        { key: 'alerts', path: '/alerts', label: 'Alerts', icon: <NavBellIcon /> },
-      ],
-    },
-  ]
+  function jumpTo(id) {
+    const el = document.getElementById(id)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
-  const flatNavItems = navGroups.flatMap((g) => g.items)
+  const serverStatus = activeAccount ? 'LIVE' : 'SETUP'
 
   return (
-    <div className="dash4-page pfd-shell">
-      <aside className={`dash4-sidebar pfd-rail ${isSidebarOpen ? 'open' : 'compact'}`}>
-        <div className="pfd-logo">SF</div>
-        <nav className="pfd-nav" aria-label="Dashboard navigation">
-          {flatNavItems.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              title={item.label}
-              className={`pfd-rail-btn ${location.pathname === item.path ? 'active' : ''}`}
-              onClick={() => navigate(item.path)}
-            >
-              {item.icon}
-            </button>
-          ))}
-        </nav>
-        <button type="button" className="pfd-rail-btn pfd-home-btn" title="Back to homepage" onClick={() => navigate('/')}>
-          <NavChartIcon />
-        </button>
+    <div className="elite-shell">
+      <aside className={`elite-sidebar ${isSidebarOpen ? '' : 'collapsed'}`}>
+        <div className="elite-brand">Smaedala FX</div>
+        <button className="elite-nav-btn" title="Overview" onClick={() => jumpTo('overview-section')}><IconGrid /><span>Overview</span></button>
+        <button className="elite-nav-btn" title="Strategy Matrix" onClick={() => jumpTo('strategy-section')}><IconMatrix /><span>Strategy Matrix</span></button>
+        <button className="elite-nav-btn" title="Psychology" onClick={() => jumpTo('psychology-section')}><IconPsychology /><span>Psychology</span></button>
+        <button className="elite-nav-btn" title="Rule Presets" onClick={() => navigate('/risk-settings')}><IconRules /><span>Rule Presets</span></button>
+        <button className="elite-nav-btn" title="Settings" onClick={() => navigate('/risk-settings')}><IconSettings /><span>Settings</span></button>
       </aside>
 
-      <main className="dash4-main">
-        <header className="dash4-header">
-          <h2>Welcome back, Trader</h2>
-          <div className="dash4-header-right">
-            <button type="button" className="dash4-pill" onClick={() => setSidebarOpen((prev) => !prev)}>
-              Menu
+      <main className="elite-main">
+        <header className="elite-header">
+          <button type="button" className="elite-icon-btn" onClick={() => setSidebarOpen((v) => !v)}>☰</button>
+
+          <div className="elite-search-wrap">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Command palette: search symbol, strategy, or trade..."
+            />
+          </div>
+
+          <div className="elite-ticker" role="status" aria-live="polite">
+            [DAILY ROOM: +${Math.round(dailyLossRemaining).toLocaleString()}] | [CONSISTENCY: {consistencyState.label} ({consistencyPct.toFixed(1)}%)] | [SERVER: {serverStatus}]
+          </div>
+
+          <div className="elite-profile-wrap">
+            <button type="button" className="elite-profile" onClick={() => setProfileOpen((v) => !v)}>
+              <span className="elite-avatar">S</span>
+              <span>
+                <strong>Smaedala</strong>
+                <small>PRO TRADER</small>
+              </span>
             </button>
-            {activeAccount ? <button type="button" className="dash4-pill">{activeAccount.account_name} ▾</button> : <div className="dash4-pill">No account configured</div>}
-            {activeAccount ? <div className="dash4-pill dash4-live">Daily Loss Remaining: ${dailyLossRemaining.toLocaleString()}</div> : <div className="dash4-pill">Complete setup to unlock live metrics</div>}
-            <div className="dash4-pill">Days Remaining: {daysTimer.days}d {daysTimer.hours}h</div>
-            <button
-              type="button"
-              className="dash4-pill dash4-logout"
-              onClick={() => {
-                localStorage.removeItem('api_token')
-                delete axios.defaults.headers.common.Authorization
-                navigate('/login')
-              }}
-            >
-              Logout
-            </button>
+            {profileOpen ? (
+              <div className="elite-profile-menu">
+                <p>{activeAccount?.account_name || 'No account'}</p>
+                <small>Account ID: {activeAccount?.id || 'N/A'}</small>
+                <button type="button" onClick={() => navigate('/risk-settings')}>Settings</button>
+                <button type="button" onClick={() => setActionMessage('Billing screen coming next.')}>Billing</button>
+                <button
+                  type="button"
+                  className="danger"
+                  onClick={() => {
+                    localStorage.removeItem('api_token')
+                    delete axios.defaults.headers.common.Authorization
+                    navigate('/login')
+                  }}
+                >
+                  Logout
+                </button>
+              </div>
+            ) : null}
           </div>
         </header>
 
-        {activeAccount ? (
-          <section className="pfd-quick-actions">
-            <button
-              type="button"
-              onClick={() => {
-                setShowAddTradeModal(true)
-                setActionError(null)
-                setActionMessage(null)
-              }}
-            >
-              Add Trade
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setShowCsvModal(true)
-                setActionError(null)
-                setActionMessage(null)
-              }}
-            >
-              Import CSV
-            </button>
-            <button type="button" onClick={() => navigate('/trade-log')}>Open Trade Log</button>
-          </section>
-        ) : null}
+        <section className="elite-actions-row">
+          <button type="button" onClick={() => setShowAddTradeModal(true)}>Add Trade</button>
+          <button type="button" onClick={() => setShowCsvModal(true)}>Import MT4/5 CSV</button>
+          <button type="button" onClick={() => navigate('/trade-log')}>Open Trade Log</button>
+          <button type="button" onClick={() => navigate('/alerts')}>Open Alerts</button>
+        </section>
 
         {activeAccount ? (
-          <section className="dash4-global-risk">
-            <div className="dash4-global-risk-head">
+          <section className="elite-liquidation-bar">
+            <div>
               <strong>Distance to Liquidation</strong>
-              <span>{distanceToLiquidation}%</span>
+              <span>{liquidationDistancePct.toFixed(0)}%</span>
             </div>
-            <div className="dash4-global-risk-bar">
-              <span style={{ width: `${distanceToLiquidation}%` }} />
+            <div className="elite-liquid-track">
+              <span style={{ width: `${liquidationDistancePct}%` }} />
             </div>
           </section>
         ) : null}
 
-        {actionMessage ? <div className="dash4-flash dash4-flash-success">{actionMessage}</div> : null}
-        {actionError ? <div className="dash4-flash dash4-flash-error">{actionError}</div> : null}
-        {activeAccount && riskAlerts.length ? (
-          <section className="dash4-risk-list">
-            {riskAlerts.map((alert, idx) => (
-              <article key={`${alert.text}-${idx}`} className={`dash4-risk-item ${alert.tone}`}>
-                <strong>{alert.tone === 'red' ? 'Critical' : alert.tone === 'yellow' ? 'Warning' : 'Safe'}</strong>
-                <span>{alert.text}</span>
-              </article>
-            ))}
-          </section>
-        ) : null}
+        {actionMessage ? <div className="elite-flash success">{actionMessage}</div> : null}
+        {actionError ? <div className="elite-flash error">{actionError}</div> : null}
+        {error ? <div className="elite-flash error">{error}</div> : null}
 
-        {loading ? (
-          <div className="dash-state">Loading dashboard...</div>
-        ) : error ? (
-          <div className="dash-state dash-error">{error}</div>
-        ) : !activeAccount ? (
-          <section className="dash4-setup">
-            <article className="dash4-setup-card">
-              <h3>Step {Math.min(setupDoneCount + 1, setupSteps.length)} of {setupSteps.length}: Connect your first account</h3>
-              <p>This is a real onboarding state. No simulated metrics are shown until your firm account and rules are configured.</p>
-              <div className="dash4-setup-progress">
-                <span style={{ width: `${setupProgress}%` }} />
-              </div>
-              <div className="dash4-checklist">
-                {setupSteps.map((s) => (
-                  <div key={s.label} className={s.done ? 'done' : ''}>
-                    <span>{s.done ? 'Done' : 'Pending'}</span>
-                    <strong>{s.label}</strong>
-                  </div>
-                ))}
-              </div>
-            </article>
-
-            <article className="dash4-setup-card">
-              <h3>Create Account & Rules</h3>
-              <form className="dash4-setup-form" onSubmit={handleCreateAccount}>
-                <label>Firm / Account Name
-                  <input value={setupForm.account_name} onChange={setupField('account_name')} placeholder="e.g., FunderPro 10k" required />
-                </label>
-                <label>Starting Balance
-                  <input type="number" min="0" step="0.01" value={setupForm.initial_balance} onChange={setupField('initial_balance')} required />
-                </label>
-                <label>Profit Target
-                  <input type="number" min="0" step="0.01" value={setupForm.profit_target} onChange={setupField('profit_target')} required />
-                </label>
-                <label>Consistency Rule %
-                  <input type="number" min="1" max="100" value={setupForm.consistency_rule_percent} onChange={setupField('consistency_rule_percent')} required />
-                </label>
-                <label>Daily Drawdown Limit %
-                  <input type="number" min="1" max="100" value={setupForm.daily_drawdown_limit_percent} onChange={setupField('daily_drawdown_limit_percent')} required />
-                </label>
-                <label>Max Loss Limit %
-                  <input type="number" min="1" max="100" value={setupForm.max_loss_limit_percent} onChange={setupField('max_loss_limit_percent')} required />
-                </label>
-                <label>Trade Source
-                  <select value={setupForm.trade_source} onChange={setupField('trade_source')} required>
-                    <option value="" disabled>Select source...</option>
-                    <option value="manual">Manual Entry</option>
-                    <option value="mt4">MT4 Sync</option>
-                    <option value="mt5">MT5 Sync</option>
-                  </select>
-                </label>
-                <button type="submit" disabled={creatingAccount}>{creatingAccount ? 'Creating...' : 'Create Account'}</button>
-              </form>
-              {setupMessage ? <p className="dash4-setup-message">{setupMessage}</p> : null}
-            </article>
-
-            <article className="dash4-setup-card">
-              <h3>What you will see after setup</h3>
-              <ul className="dash4-setup-list">
-                <li>Total Equity (live)</li>
-                <li>Profit Target progress with animated bars</li>
-                <li>Real drawdown traffic-light alerts</li>
-                <li>Interactive consistency and strategy analytics</li>
-                <li>Trades table with search and setup filters</li>
-              </ul>
-            </article>
+        {loading ? <div className="elite-state">Loading command center...</div> : !activeAccount ? (
+          <section className="elite-card elite-setup-card">
+            <h2>Connect Your First Trading Account</h2>
+            <p>All analytics stay unset until you define your prop-firm profile and rule engine.</p>
+            <form className="elite-setup-form" onSubmit={handleCreateAccount}>
+              <label>Account Name<input value={setupForm.account_name} onChange={setupField('account_name')} placeholder="FTMO 100K" required /></label>
+              <label>Starting Balance<input type="number" min="0" step="0.01" value={setupForm.initial_balance} onChange={setupField('initial_balance')} required /></label>
+              <label>Profit Target<input type="number" min="0" step="0.01" value={setupForm.profit_target} onChange={setupField('profit_target')} required /></label>
+              <label>Consistency Rule %<input type="number" min="1" max="100" value={setupForm.consistency_rule_percent} onChange={setupField('consistency_rule_percent')} required /></label>
+              <label>Daily Drawdown %<input type="number" min="1" max="100" value={setupForm.daily_drawdown_limit_percent} onChange={setupField('daily_drawdown_limit_percent')} required /></label>
+              <label>Max Loss %<input type="number" min="1" max="100" value={setupForm.max_loss_limit_percent} onChange={setupField('max_loss_limit_percent')} required /></label>
+              <button type="submit">Activate Command Center</button>
+            </form>
           </section>
         ) : (
           <>
-            <section className="dash4-metrics">
-              <MetricCard
-                title="Total Equity"
-                value={`€${equity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                caption="Live account balance"
-                sparkline={sparklinePoints}
-              />
-              <MetricCard
-                title="Profit Target Progress"
-                value={`${Math.round(profitProgress)}%`}
-                caption={`€${Math.round(totalProfit).toLocaleString()} / €${profitTarget.toLocaleString()}`}
-                progress={profitProgress}
-                progressColor="#00F2FE"
-                animated={animatedBars}
-              />
-              <MetricCard
-                title="Max Daily Drawdown"
-                value={`${dailyDrawdownPercent.toFixed(2)}%`}
-                caption={`${dailyDrawdownLimitPercent}% max daily rule`}
-                progress={dailyDrawdownUsedPct}
-                progressColor="#EF4444"
-                statusTone={drawdownTone}
-                animated={animatedBars}
-              />
-              <MetricCard
-                title="Consistency Score"
-                value={`${consistencyPct.toFixed(1)}%`}
-                caption={`${consistencyTone === 'red' ? 'Breach Risk' : consistencyTone === 'yellow' ? 'Warning' : 'Safe'} (${consistencyRulePercent}% Rule)`}
-                statusTone={consistencyTone}
-              />
+            <section className="elite-metric-grid">
+              <article className="elite-card elite-metric">
+                <p>EQUITY</p>
+                <h3>€{formatMoney(equity)}</h3>
+                <small>Live account balance</small>
+                <Sparkline points={sparklinePoints} />
+              </article>
+
+              <article className="elite-card elite-metric">
+                <p>TARGET PROGRESS</p>
+                <h3>{progressToTargetPct.toFixed(0)}%</h3>
+                <small>€{formatMoney(totalProfit)} / €{formatMoney(profitTarget)}</small>
+                <div className="elite-progress"><span style={{ width: `${progressToTargetPct}%` }} /></div>
+              </article>
+
+              <article className="elite-card elite-metric">
+                <p>DAILY LOSS BUFFER</p>
+                <h3>€{formatMoney(dailyLossRemaining)}</h3>
+                <small>{dailyDrawdownPercent.toFixed(2)}% used of {dailyDrawdownLimit.toFixed(2)}%</small>
+                <div className="elite-progress red"><span style={{ width: `${drawdownUsagePct}%` }} /></div>
+              </article>
+
+              <article className={`elite-card elite-metric ${consistencyState.cls}`}>
+                <p>CONSISTENCY BADGE</p>
+                <h3>{consistencyState.label}</h3>
+                <small>{consistencyPct.toFixed(1)}% of {consistencyLimit}% rule</small>
+              </article>
             </section>
 
-            <section className="dash4-core-grid">
-              <div className="dash4-core-left">
-                <InteractiveChart data={dailySeries} selectedDay={selectedDay} onSelectDay={setSelectedDay} />
-                <div className="dash4-subgrid">
-                  <article className="dash4-subcard">
-                    <h3>Win Rate by Setup</h3>
-                    {strategyBreakdown.length === 0 ? <p className="dash4-empty">No setup data yet.</p> : (
-                      <div className="dash4-setup-list">
-                        {strategyBreakdown.map((s) => (
-                          <div key={s.setup} className="dash4-setup-row">
-                            <span>{s.setup}</span>
-                            <strong>{s.winRate}%</strong>
-                            <small>€{Math.round(s.pnl).toLocaleString()}</small>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </article>
-                  <article className="dash4-subcard">
-                    <h3>Psychology Heatmap</h3>
-                    <div className="dash4-heatmap">
-                      {heatmapDays.map((d) => (
-                        <span
-                          key={d.dayKey}
-                          className={`dash4-heat-${d.dailyPnl >= 150 ? 'calm' : d.dailyPnl >= 0 ? 'focus' : d.dailyPnl <= -150 ? 'fomo' : 'stress'}`}
-                          title={`${dayLabel(d.dayKey)} • ${d.mood.label} • ${d.dailyPnl >= 0 ? '+' : ''}${d.dailyPnl.toLocaleString()}`}
-                        />
-                      ))}
-                    </div>
-                  </article>
-                </div>
-              </div>
+            <section className="elite-core-grid">
+              <EquityChart series={dailySeries} selectedDay={selectedDay} onSelectDay={setSelectedDay} />
 
-              <aside className="dash4-gauge-card">
-                <h3>Consistency Gauge</h3>
-                <p>Highest Day Profit vs {consistencyRulePercent}% breach threshold</p>
-                <label className="dash4-toggle">
-                  <span>What-If Simulator: +€{whatIfBoost.toLocaleString()}</span>
+              <aside className="elite-card elite-gauge-card">
+                <h3>Consistency Monitor</h3>
+                <p>40% rule proximity visualizer</p>
+                <label className="elite-whatif">
+                  <span>What-If: +€{whatIfBoost.toLocaleString()}</span>
                   <input
                     type="range"
                     min="0"
@@ -807,100 +634,105 @@ export default function Dashboard() {
                     onChange={(e) => setWhatIfBoost(Number(e.target.value))}
                   />
                 </label>
-                <div className="dash4-ring" style={{ ['--ring-progress']: `${consistencyUsedPct}` }}>
+
+                <div className="elite-ring" style={{ '--ring-progress': `${consistencyUsagePct}` }}>
                   <div>
                     <strong>{consistencyPct.toFixed(1)}%</strong>
-                    <span>of {consistencyRulePercent}%</span>
+                    <span>of {consistencyLimit}%</span>
                   </div>
                 </div>
-                <div className={`dash4-badge dash4-${consistencyTone}`}>{consistencyTone === 'red' ? 'Breach Risk' : consistencyTone === 'yellow' ? 'Warning' : 'Safe'}</div>
-                <div className="dash4-threshold">
+
+                <div className="elite-threshold">
                   <span>Danger Threshold</span>
-                  <strong>{consistencyRulePercent}%</strong>
+                  <strong>{consistencyLimit}%</strong>
                 </div>
-                <article className="dash4-strategy-matrix">
-                  <h4>Strategy Matrix (ICT)</h4>
-                  {ictStrategyMatrix.map((s) => {
-                    const expectancy = Number(s.trades || 0) > 0 ? Number(s.pnl || 0) / Number(s.trades) : 0
-                    return (
-                      <div key={s.setup} className="dash4-matrix-row">
-                        <span>{s.setup}</span>
-                        <strong>PF {s.profitFactor === 99 ? '∞' : Number(s.profitFactor || 0).toFixed(2)} | EX {expectancy.toFixed(1)}</strong>
-                      </div>
-                    )
-                  })}
-                </article>
               </aside>
             </section>
 
-            <section className="dash4-table-card">
-              <div className="dash4-table-headline">
-                <h3>Recent Trades</h3>
-                <div className="dash4-table-filters">
-                  <input
-                    type="text"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search symbol or setup (e.g., XAUUSD)"
-                  />
+            <section className="elite-analytics-grid">
+              <article className="elite-card" id="strategy-section">
+                <h3>Strategy Matrix</h3>
+                <div className="elite-matrix-head">
+                  <span>Setup</span>
+                  <span>Win Rate</span>
+                  <span>Profit Factor</span>
+                  <span>Expectancy</span>
+                </div>
+                {strategyMatrix.map((row) => (
+                  <div key={row.setup} className="elite-matrix-row">
+                    <span>{row.setup}</span>
+                    <span>{row.winRate.toFixed(1)}%</span>
+                    <span>{row.pf === 99 ? '∞' : row.pf.toFixed(2)}</span>
+                    <span>{row.expectancy.toFixed(2)}</span>
+                  </div>
+                ))}
+              </article>
+
+              <article className="elite-card" id="psychology-section">
+                <h3>Psychology Heatmap</h3>
+                <div className="elite-heatmap">
+                  {heatmapCells.map((cell) => (
+                    <span
+                      key={cell.key}
+                      className={`elite-heat ${cell.mood.cls}`}
+                      title={`${cell.key} • ${cell.mood.label} • ${cell.pnl >= 0 ? '+' : ''}${cell.pnl.toFixed(2)}`}
+                    />
+                  ))}
+                </div>
+              </article>
+            </section>
+
+            <section className="elite-card elite-trade-gallery">
+              <div className="elite-gallery-head">
+                <h3>Trade Gallery</h3>
+                <div className="elite-gallery-filters">
                   <select value={setupFilter} onChange={(e) => setSetupFilter(e.target.value)}>
-                    {setupOptions.map((opt) => <option value={opt} key={opt}>{opt === 'all' ? 'All Setups' : opt}</option>)}
+                    {setupOptions.map((opt) => (
+                      <option key={opt} value={opt}>{opt === 'all' ? 'All Setups' : opt}</option>
+                    ))}
                   </select>
                 </div>
               </div>
-              <p className="dash4-note">Trade Gallery: click a trade row to attach before/after chart screenshots and logic notes (next enhancement).</p>
-              <div className="dash4-trades-head">
+
+              <div className="elite-trades-head">
                 <span>Symbol</span>
                 <span>Type</span>
                 <span>Lot Size</span>
                 <span>PnL</span>
               </div>
+
               {filteredTrades.length === 0 ? (
-                <div className="dash4-empty">No trades match current filters.</div>
-              ) : (
-                filteredTrades.map((t) => (
-                  <div key={t.id} className="dash4-trades-row">
-                    <span>{t.symbol || '-'}</span>
-                    <span>{String(t.type || '-').toUpperCase()}</span>
-                    <span>{Number(t.lot_size || 0).toFixed(2)}</span>
-                    <span className={t.pnl >= 0 ? 'dash4-green' : 'dash4-red'}>
-                      {t.pnl >= 0 ? '+' : ''}{t.pnl.toLocaleString()}
-                    </span>
-                  </div>
-                ))
-              )}
+                <div className="elite-state">No trades match current filters.</div>
+              ) : filteredTrades.map((t) => (
+                <div key={t.id} className="elite-trades-row">
+                  <span>{t.symbol || '-'}</span>
+                  <span>{String(t.type || '').toUpperCase()}</span>
+                  <span>{Number(t.lot_size || 0).toFixed(2)}</span>
+                  <span className={t.pnl >= 0 ? 'pos' : 'neg'}>{t.pnl >= 0 ? '+' : ''}{formatMoney(t.pnl)}</span>
+                </div>
+              ))}
             </section>
           </>
         )}
 
         {showAddTradeModal ? (
-          <div className="dash4-modal-backdrop" onClick={() => setShowAddTradeModal(false)}>
-            <div className="dash4-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="elite-modal-backdrop" onClick={() => setShowAddTradeModal(false)}>
+            <div className="elite-modal" onClick={(e) => e.stopPropagation()}>
               <h3>Add Trade</h3>
-              <form className="dash4-setup-form" onSubmit={handleAddTradeSubmit}>
-                <label>Symbol
-                  <input value={tradeForm.symbol} onChange={tradeField('symbol')} placeholder="XAUUSD" required />
-                </label>
+              <form className="elite-modal-form" onSubmit={handleAddTradeSubmit}>
+                <label>Symbol<input value={tradeForm.symbol} onChange={tradeField('symbol')} placeholder="XAUUSD" required /></label>
                 <label>Type
                   <select value={tradeForm.type} onChange={tradeField('type')}>
                     <option value="buy">Buy</option>
                     <option value="sell">Sell</option>
                   </select>
                 </label>
-                <label>Lot Size
-                  <input type="number" min="0" step="0.01" value={tradeForm.lot_size} onChange={tradeField('lot_size')} />
-                </label>
-                <label>PnL
-                  <input type="number" step="0.01" value={tradeForm.pnl} onChange={tradeField('pnl')} placeholder="125.50" required />
-                </label>
-                <label>Close Time
-                  <input type="datetime-local" value={tradeForm.close_time} onChange={tradeField('close_time')} required />
-                </label>
-                <label>Strategy Tag
-                  <input value={tradeForm.strategy_tag} onChange={tradeField('strategy_tag')} placeholder="Silver Bullet" />
-                </label>
-                <div className="dash4-modal-actions">
-                  <button type="button" className="dash4-pill" onClick={() => setShowAddTradeModal(false)}>Cancel</button>
+                <label>Lot Size<input type="number" min="0" step="0.01" value={tradeForm.lot_size} onChange={tradeField('lot_size')} /></label>
+                <label>PnL<input type="number" step="0.01" value={tradeForm.pnl} onChange={tradeField('pnl')} required /></label>
+                <label>Close Time<input type="datetime-local" value={tradeForm.close_time} onChange={tradeField('close_time')} required /></label>
+                <label>Strategy Tag<input value={tradeForm.strategy_tag} onChange={tradeField('strategy_tag')} placeholder="Silver Bullet" /></label>
+                <div className="elite-modal-actions">
+                  <button type="button" onClick={() => setShowAddTradeModal(false)}>Cancel</button>
                   <button type="submit" disabled={submittingTrade}>{submittingTrade ? 'Saving...' : 'Save Trade'}</button>
                 </div>
               </form>
@@ -909,16 +741,14 @@ export default function Dashboard() {
         ) : null}
 
         {showCsvModal ? (
-          <div className="dash4-modal-backdrop" onClick={() => setShowCsvModal(false)}>
-            <div className="dash4-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="elite-modal-backdrop" onClick={() => setShowCsvModal(false)}>
+            <div className="elite-modal" onClick={(e) => e.stopPropagation()}>
               <h3>Import MT4/MT5 CSV</h3>
-              <form className="dash4-setup-form" onSubmit={handleCsvImportSubmit}>
-                <label>CSV File
-                  <input type="file" accept=".csv,.txt" onChange={(e) => setCsvFile(e.target.files?.[0] || null)} required />
-                </label>
-                <small className="dash4-note">Expected headers include symbol, type, pnl, close time or ticket-based format.</small>
-                <div className="dash4-modal-actions">
-                  <button type="button" className="dash4-pill" onClick={() => setShowCsvModal(false)}>Cancel</button>
+              <form className="elite-modal-form" onSubmit={handleCsvImportSubmit}>
+                <label>CSV File<input type="file" accept=".csv,.txt" onChange={(e) => setCsvFile(e.target.files?.[0] || null)} required /></label>
+                <small>Expected headers include symbol, type, pnl, close_time.</small>
+                <div className="elite-modal-actions">
+                  <button type="button" onClick={() => setShowCsvModal(false)}>Cancel</button>
                   <button type="submit" disabled={importingCsv}>{importingCsv ? 'Importing...' : 'Import CSV'}</button>
                 </div>
               </form>
@@ -929,3 +759,4 @@ export default function Dashboard() {
     </div>
   )
 }
+
