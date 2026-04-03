@@ -1,762 +1,713 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import axios from 'axios'
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import {
+  LayoutDashboard,
+  FileText,
+  BarChart3,
+  Settings,
+  User,
+  ChevronDown,
+  Bell,
+  Search,
+  Download,
+  LogOut,
+} from 'lucide-react';
 
-const START_BALANCE = 100000
-const MAX_DRAWDOWN_RULE = 5
-const CONSISTENCY_RULE = 40
+const START_BALANCE = 100000;
+const DEFAULT_PROFIT_TARGET = 10000;
 
-function formatMoney(value) {
-  return Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const MOCK_TRADES = [
+  { id: 1, symbol: 'EUR/USD', type: 'BUY', lotSize: 0.5, pnl: 450.25, close_time: '2026-03-10T10:00:00Z', strategy_tag: 'Silver Bullet' },
+  { id: 2, symbol: 'GBP/USD', type: 'SELL', lotSize: 0.3, pnl: -120.5, close_time: '2026-03-11T11:20:00Z', strategy_tag: 'Judas Swing' },
+  { id: 3, symbol: 'USD/JPY', type: 'BUY', lotSize: 1.0, pnl: 680, close_time: '2026-03-12T13:15:00Z', strategy_tag: 'London Open' },
+  { id: 4, symbol: 'AUD/USD', type: 'SELL', lotSize: 0.2, pnl: 215.75, close_time: '2026-03-13T08:00:00Z', strategy_tag: 'ICT Core' },
+  { id: 5, symbol: 'EUR/GBP', type: 'BUY', lotSize: 0.4, pnl: -95.3, close_time: '2026-03-14T09:40:00Z', strategy_tag: 'Silver Bullet' },
+  { id: 6, symbol: 'USD/CHF', type: 'BUY', lotSize: 0.6, pnl: 340.6, close_time: '2026-03-15T16:35:00Z', strategy_tag: 'London Open' },
+  { id: 7, symbol: 'NZD/USD', type: 'SELL', lotSize: 0.3, pnl: 185.2, close_time: '2026-03-16T12:10:00Z', strategy_tag: 'Judas Swing' },
+  { id: 8, symbol: 'EUR/JPY', type: 'BUY', lotSize: 0.5, pnl: 520.4, close_time: '2026-03-17T14:55:00Z', strategy_tag: 'ICT Core' },
+];
+
+const formatMoney = (val) =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }).format(Number(val || 0));
+
+const clamp = (num, min, max) => Math.min(max, Math.max(min, num));
+
+function normalizeTrades(items) {
+  if (!Array.isArray(items)) return [];
+  return items.map((t, idx) => ({
+    id: t.id ?? idx + 1,
+    symbol: t.symbol || 'N/A',
+    type: String(t.type || 'BUY').toUpperCase(),
+    lotSize: Number(t.lot_size ?? t.lotSize ?? 0.1),
+    pnl: Number(t.pnl || 0),
+    close_time: t.close_time || new Date().toISOString(),
+    strategy_tag: t.strategy_tag || 'General',
+  }));
 }
 
-function dayKey(dateString) {
-  if (!dateString) return 'N/A'
-  const d = new Date(dateString)
-  if (Number.isNaN(d.getTime())) return String(dateString).slice(0, 10)
-  return d.toISOString().slice(0, 10)
-}
+function buildCalendarDays() {
+  const days = [];
+  const monthPnL = [450, -120, 680, 215, -95, 340, 185, 520, 280, -75, 410, 195, -165, 525, 310, 445, -88, 390, 265, 510, -145, 375, 420, 485, -92, 355, 490, 0, 0, 0];
 
-function dayLabel(dateKey) {
-  if (!dateKey || dateKey === 'N/A') return 'Unknown'
-  const d = new Date(`${dateKey}T00:00:00`)
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-}
-
-function getMood(pnl) {
-  if (pnl >= 120) return { label: 'Calm', cls: 'calm' }
-  if (pnl >= 0) return { label: 'Focused', cls: 'focus' }
-  if (pnl <= -120) return { label: 'FOMO', cls: 'fomo' }
-  return { label: 'Aggressive', cls: 'stress' }
-}
-
-function getStatusFromPct(pct) {
-  if (pct >= 100) return { label: 'WARNING (BREACH)', cls: 'danger' }
-  if (pct >= 70) return { label: 'WARNING', cls: 'warn' }
-  return { label: 'SAFE (PASSING)', cls: 'safe' }
-}
-
-function IconGrid() {
-  return <svg viewBox="0 0 24 24"><path d="M4 4h7v7H4V4Zm9 0h7v7h-7V4ZM4 13h7v7H4v-7Zm9 0h7v7h-7v-7Z" /></svg>
-}
-
-function IconMatrix() {
-  return <svg viewBox="0 0 24 24"><path d="M3 3h18v18H3V3Zm2 2v4h4V5H5Zm6 0v4h8V5h-8ZM5 11v8h4v-8H5Zm6 0v3h8v-3h-8Zm0 5v3h8v-3h-8Z" /></svg>
-}
-
-function IconPsychology() {
-  return <svg viewBox="0 0 24 24"><path d="M12 2a8 8 0 0 0-4 14.9V20a2 2 0 0 0 2 2h4a2 2 0 0 0 2-2v-3.1A8 8 0 0 0 12 2Zm2 17h-4v-1h4v1Zm.2-4.3-.7.4V16h-3v-.9l-.7-.4a5.6 5.6 0 1 1 4.8 0Z" /></svg>
-}
-
-function IconRules() {
-  return <svg viewBox="0 0 24 24"><path d="M12 2 3 6v6c0 5.2 3.4 9.8 9 12 5.6-2.2 9-6.8 9-12V6l-9-4Zm0 2.2 7 3.1v4.6c0 4.1-2.6 8-7 9.9-4.4-1.9-7-5.8-7-9.9V7.3l7-3.1Z" /></svg>
-}
-
-function IconSettings() {
-  return <svg viewBox="0 0 24 24"><path d="m12 8.5 2.4-1.4 2 1.1v2.7l-2.4 1.4-2-1.1V8.5Zm0-6.5 2 1.2.4 2.3 2 .8 1.9-1 2 1.2-.1 2.2 1.6 1.4 2.2-.2v2.4l-2.2.6-.9 2 1.1 1.9-1.2 2-2.2-.1-1.4 1.6.2 2.2H12l-.6-2.2-2-.9-1.9 1.1-2-1.2.1-2.2-1.6-1.4-2.2.2V12l2.2-.6.9-2-1.1-1.9 1.2-2 2.2.1 1.4-1.6L8 2h4Z" /></svg>
-}
-
-function Sparkline({ points = [] }) {
-  if (!points || points.length < 2) return null
-
-  const max = Math.max(...points)
-  const min = Math.min(...points)
-  const range = Math.max(max - min, 1)
-
-  const line = points.map((value, i) => {
-    const x = (i / (points.length - 1)) * 100
-    const y = 76 - ((value - min) / range) * 52
-    return `${x},${y}`
-  }).join(' ')
-
-  return (
-    <svg className="elite-spark" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-      <polyline points={line} fill="none" stroke="#10B981" strokeWidth="4" strokeLinecap="round" />
-    </svg>
-  )
-}
-
-function EquityChart({ series, selectedDay, onSelectDay }) {
-  const ref = useRef(null)
-  const [hovered, setHovered] = useState(null)
-
-  const points = useMemo(() => {
-    if (!series.length) return []
-    const max = Math.max(...series.map((d) => d.balance))
-    const min = Math.min(...series.map((d) => d.balance))
-    const range = Math.max(max - min, 1)
-
-    return series.map((d, idx) => ({
-      ...d,
-      x: (idx / Math.max(series.length - 1, 1)) * 100,
-      y: 76 - ((d.balance - min) / range) * 54,
-    }))
-  }, [series])
-
-  const path = points.map((p) => `${p.x},${p.y}`).join(' ')
-
-  function onMove(event) {
-    if (!ref.current || !points.length) return
-    const rect = ref.current.getBoundingClientRect()
-    const rx = ((event.clientX - rect.left) / rect.width) * 100
-
-    let nearest = points[0]
-    let dist = Math.abs(points[0].x - rx)
-
-    for (let i = 1; i < points.length; i += 1) {
-      const d = Math.abs(points[i].x - rx)
-      if (d < dist) {
-        dist = d
-        nearest = points[i]
-      }
-    }
-
-    setHovered(nearest)
+  for (let i = 0; i < 4; i += 1) {
+    days.push({ day: 28 + i, pnl: 0, trades: 0, current: false });
   }
 
-  return (
-    <article className="elite-card elite-chart-card" id="overview-section">
-      <h3>Equity Curve</h3>
-      <div className="elite-chart-inner" ref={ref} onMouseMove={onMove} onMouseLeave={() => setHovered(null)}>
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="Night-sky equity curve">
-          <defs>
-            <linearGradient id="eliteFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="rgba(0,242,254,0.35)" />
-              <stop offset="100%" stopColor="rgba(0,242,254,0.03)" />
-            </linearGradient>
-          </defs>
-          <rect x="0" y="0" width="100" height="100" fill="#111722" />
-          <polyline points="0,20 100,20" stroke="rgba(255,255,255,0.08)" strokeDasharray="2 2" fill="none" />
-          <polyline points="0,50 100,50" stroke="rgba(255,255,255,0.08)" strokeDasharray="2 2" fill="none" />
-          <polyline points="0,80 100,80" stroke="rgba(255,255,255,0.08)" strokeDasharray="2 2" fill="none" />
-          {path ? (
-            <>
-              <polygon points={`0,100 ${path} 100,100`} fill="url(#eliteFill)" />
-              <polyline points={path} fill="none" stroke="#00F2FE" strokeWidth="0.9" strokeLinecap="round" />
-            </>
-          ) : null}
-          {points.map((p) => (
-            <circle
-              key={p.dayKey}
-              cx={p.x}
-              cy={p.y}
-              r={selectedDay === p.dayKey ? 1.4 : 1}
-              className={`elite-pip ${selectedDay === p.dayKey ? 'active' : ''}`}
-              onClick={() => onSelectDay(selectedDay === p.dayKey ? null : p.dayKey)}
-            />
-          ))}
-        </svg>
-        {hovered ? (
-          <div className="elite-tooltip" style={{ left: `${hovered.x}%`, top: `${hovered.y}%` }}>
-            <strong>{dayLabel(hovered.dayKey)}</strong>
-            <span>Balance: €{formatMoney(hovered.balance)}</span>
-            <span>Daily PnL: {hovered.dailyPnl >= 0 ? '+' : ''}{formatMoney(hovered.dailyPnl)}</span>
-            <span>Trades: {hovered.totalTrades}</span>
-          </div>
-        ) : null}
-      </div>
-      <div className="elite-axis">
-        {series.map((d, i) => (i % Math.ceil(series.length / 8 || 1) === 0 || i === series.length - 1 ? <span key={d.dayKey}>{dayLabel(d.dayKey)}</span> : <span key={d.dayKey} />))}
-      </div>
-    </article>
-  )
-}
-
-export default function Dashboard() {
-  const navigate = useNavigate()
-
-  const [activeAccount, setActiveAccount] = useState(null)
-  const [metrics, setMetrics] = useState(null)
-  const [trades, setTrades] = useState([])
-
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [actionMessage, setActionMessage] = useState(null)
-  const [actionError, setActionError] = useState(null)
-
-  const [selectedDay, setSelectedDay] = useState(null)
-  const [search, setSearch] = useState('')
-  const [setupFilter, setSetupFilter] = useState('all')
-
-  const [isSidebarOpen, setSidebarOpen] = useState(true)
-  const [profileOpen, setProfileOpen] = useState(false)
-  const [whatIfBoost, setWhatIfBoost] = useState(0)
-
-  const [showAddTradeModal, setShowAddTradeModal] = useState(false)
-  const [showCsvModal, setShowCsvModal] = useState(false)
-  const [submittingTrade, setSubmittingTrade] = useState(false)
-  const [importingCsv, setImportingCsv] = useState(false)
-  const [csvFile, setCsvFile] = useState(null)
-
-  const [daysTimer, setDaysTimer] = useState({ days: 0, hours: 0 })
-
-  const [tradeForm, setTradeForm] = useState({
-    symbol: '',
-    type: 'buy',
-    lot_size: '0.10',
-    pnl: '',
-    close_time: new Date().toISOString().slice(0, 16),
-    strategy_tag: '',
-    entry_price: '',
-    exit_price: '',
-  })
-
-  const [setupForm, setSetupForm] = useState({
-    account_name: '',
-    initial_balance: '',
-    profit_target: '',
-    consistency_rule_percent: '',
-    daily_drawdown_limit_percent: '',
-    max_loss_limit_percent: '',
-    timezone: 'UTC',
-  })
-
-  async function loadDashboardData() {
-    try {
-      setLoading(true)
-      setError(null)
-
-      const accounts = await axios.get('/accounts')
-      const account = accounts.data.data?.[0] || null
-      setActiveAccount(account)
-
-      if (!account) {
-        setMetrics(null)
-        setTrades([])
-        return
-      }
-
-      const [m, t] = await Promise.all([
-        axios.get(`/accounts/${account.id}/metrics`),
-        axios.get(`/accounts/${account.id}/trades`),
-      ])
-
-      setMetrics(m.data.data)
-      const items = t.data.data.data || t.data.data || []
-      setTrades(Array.isArray(items) ? items : [])
-    } catch (err) {
-      if (err.response?.status === 401) {
-        navigate('/login')
-        return
-      }
-      setError(err.response?.data?.message || 'Failed to load command center data.')
-    } finally {
-      setLoading(false)
-    }
+  for (let i = 1; i <= 30; i += 1) {
+    const pnl = monthPnL[i - 1];
+    days.push({
+      day: i,
+      pnl,
+      trades: pnl === 0 ? 0 : (i % 6) + 2,
+      current: true,
+    });
   }
 
+  return days;
+}
+
+function equitySeries(initialBalance, trades) {
+  const base = initialBalance || START_BALANCE;
+  const points = [{ label: 'Day 1', value: base }];
+  let running = base;
+
+  const active = trades.length > 0 ? trades.slice(-30) : MOCK_TRADES;
+  active.forEach((trade, index) => {
+    running += Number(trade.pnl || 0);
+    points.push({ label: `Day ${index + 2}`, value: running, trade });
+  });
+
+  while (points.length < 30) {
+    running += (Math.random() - 0.35) * 180;
+    points.push({ label: `Day ${points.length + 1}`, value: running });
+  }
+
+  return points;
+}
+
+const Dashboard = () => {
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [activeAccount, setActiveAccount] = useState(null);
+  const [trades, setTrades] = useState([]);
+  const [metrics, setMetrics] = useState(null);
+  const [symbolFilter, setSymbolFilter] = useState('All Symbols');
+
   useEffect(() => {
-    loadDashboardData()
-  }, [])
+    const load = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const accountsRes = await axios.get('/accounts');
+        const account = accountsRes.data?.data?.[0] || null;
+        setActiveAccount(account);
 
-  const normalizedTrades = useMemo(() => {
-    return trades.map((t) => ({
-      ...t,
-      pnl: Number(t.pnl || 0),
-      setup: t.strategy_tag || 'General',
-      close_time: t.close_time || new Date().toISOString(),
-      dayKey: dayKey(t.close_time),
-      mood: getMood(Number(t.pnl || 0)),
-    }))
-  }, [trades])
+        if (!account) {
+          setTrades(normalizeTrades(MOCK_TRADES));
+          setMetrics(null);
+          return;
+        }
 
-  const dailySeries = useMemo(() => {
-    const map = new Map()
-    normalizedTrades.forEach((t) => {
-      if (!map.has(t.dayKey)) {
-        map.set(t.dayKey, { dayKey: t.dayKey, dailyPnl: 0, totalTrades: 0 })
+        const [tradesRes, metricsRes] = await Promise.all([
+          axios.get(`/accounts/${account.id}/trades`),
+          axios.get(`/accounts/${account.id}/metrics`),
+        ]);
+
+        const incomingTrades = tradesRes.data?.data?.data || tradesRes.data?.data || [];
+        setTrades(normalizeTrades(incomingTrades));
+        setMetrics(metricsRes.data?.data || null);
+      } catch (err) {
+        if (err.response?.status === 401) {
+          navigate('/login');
+          return;
+        }
+        setError(err.response?.data?.message || 'Live data unavailable. Showing dashboard preview data.');
+        setActiveAccount(null);
+        setTrades(normalizeTrades(MOCK_TRADES));
+        setMetrics(null);
+      } finally {
+        setLoading(false);
       }
-      const row = map.get(t.dayKey)
-      row.dailyPnl += t.pnl
-      row.totalTrades += 1
-    })
+    };
 
-    const sorted = Array.from(map.values()).sort((a, b) => a.dayKey.localeCompare(b.dayKey))
-    let balance = Number(activeAccount?.initial_balance || START_BALANCE)
+    load();
+  }, [navigate]);
 
-    return sorted.map((d) => {
-      balance += d.dailyPnl
-      return { ...d, balance }
-    })
-  }, [normalizedTrades, activeAccount?.initial_balance])
+  const data = useMemo(() => {
+    const initialBalance = Number(activeAccount?.initial_balance || START_BALANCE);
+    const target = Number(activeAccount?.profit_target || DEFAULT_PROFIT_TARGET);
+    const totalPnl = trades.reduce((sum, t) => sum + Number(t.pnl || 0), 0);
+    const currentBalance = Number(metrics?.currentBalance || initialBalance + totalPnl);
 
-  useEffect(() => {
-    const usedTradingDays = Math.max(1, dailySeries.length)
-    const daysRemaining = Math.max(0, 30 - usedTradingDays)
+    const dailyLossRemaining = Number(metrics?.dailyLossRemaining || Math.max(initialBalance * 0.05 - Math.max(0, -totalPnl), 0));
+    const dailyDrawdownPct = Number(metrics?.dailyDrawdownPercent || (totalPnl < 0 ? (Math.abs(totalPnl) / initialBalance) * 100 : 0.01));
 
-    const tick = () => {
-      const now = new Date()
-      const nextHour = new Date(now)
-      nextHour.setHours(now.getHours() + 1, 0, 0, 0)
-      const diff = Math.max(0, nextHour.getTime() - now.getTime())
-      setDaysTimer({ days: daysRemaining, hours: Math.floor(diff / (1000 * 60 * 60)) })
-    }
+    const positiveDays = {};
+    trades.forEach((t) => {
+      const day = String(t.close_time).slice(0, 10);
+      positiveDays[day] = (positiveDays[day] || 0) + Math.max(0, Number(t.pnl || 0));
+    });
 
-    tick()
-    const timer = setInterval(tick, 60000)
-    return () => clearInterval(timer)
-  }, [dailySeries.length])
+    const bestDay = Math.max(...Object.values(positiveDays), 0);
+    const totalPositive = Object.values(positiveDays).reduce((a, b) => a + b, 0);
+    const consistencyPct = Number(metrics?.topDailyPercentOfTarget || (totalPositive ? (bestDay / totalPositive) * 100 : 18));
 
-  const equity = Number(metrics?.currentBalance || dailySeries.at(-1)?.balance || activeAccount?.initial_balance || START_BALANCE)
-  const initialBalance = Number(activeAccount?.initial_balance || START_BALANCE)
-  const totalProfit = Math.max(0, equity - initialBalance)
+    const targetProgressValue = currentBalance - initialBalance;
+    const targetProgressPct = clamp((targetProgressValue / Math.max(target, 1)) * 100, 0, 100);
 
-  const profitTarget = Number(metrics?.profitTarget || activeAccount?.profit_target || 10000)
-  const consistencyLimit = Number(activeAccount?.consistency_rule_percent || CONSISTENCY_RULE)
-  const dailyDrawdownLimit = Number(activeAccount?.daily_drawdown_limit_percent || MAX_DRAWDOWN_RULE)
-  const maxLossLimit = Number(activeAccount?.max_loss_limit_percent || 10)
+    const wins = trades.filter((t) => t.pnl > 0).length;
+    const winRate = clamp((wins / Math.max(trades.length, 1)) * 100, 0, 100);
 
-  const dailyDrawdownPercent = Number(metrics?.dailyDrawdownPercent || 0)
-  const maxLossPercent = Number(metrics?.maxLossPercent || 0)
-  const topDayPctRaw = Number(metrics?.topDailyPercentOfTarget || 0)
-  const topDayProfitEstimate = (topDayPctRaw / 100) * totalProfit
-  const whatIfConsistency = (topDayProfitEstimate / Math.max(totalProfit + whatIfBoost, 1)) * 100
-  const consistencyPct = whatIfBoost > 0 ? whatIfConsistency : topDayPctRaw
-
-  const progressToTargetPct = Math.min(100, Math.max(0, (totalProfit / Math.max(profitTarget, 1)) * 100))
-  const drawdownUsagePct = Math.min(100, Math.max(0, (dailyDrawdownPercent / Math.max(dailyDrawdownLimit, 0.01)) * 100))
-  const consistencyUsagePct = Math.min(100, Math.max(0, (consistencyPct / Math.max(consistencyLimit, 0.01)) * 100))
-  const liquidationDistancePct = Math.max(0, Math.min(100, 100 - ((maxLossPercent / Math.max(maxLossLimit, 0.01)) * 100)))
-
-  const consistencyState = getStatusFromPct(consistencyUsagePct)
-  const drawdownState = getStatusFromPct(drawdownUsagePct)
-
-  const dailyLossBufferAmount = initialBalance * (dailyDrawdownLimit / 100)
-  const dailyLossUsedAmount = initialBalance * (dailyDrawdownPercent / 100)
-  const dailyLossRemaining = Math.max(0, dailyLossBufferAmount - dailyLossUsedAmount)
-
-  const sparklinePoints = useMemo(() => {
-    const values = dailySeries.slice(-7).map((d) => d.balance)
-    return values.length >= 2 ? values : [initialBalance - 200, initialBalance - 80, initialBalance + 40, initialBalance + 120, initialBalance + 180, initialBalance + 230, equity]
-  }, [dailySeries, initialBalance, equity])
-
-  const setupOptions = useMemo(() => ['all', ...Array.from(new Set(normalizedTrades.map((t) => t.setup)))], [normalizedTrades])
+    return {
+      initialBalance,
+      target,
+      totalPnl,
+      currentBalance,
+      dailyLossRemaining,
+      dailyDrawdownPct,
+      consistencyPct,
+      targetProgressValue,
+      targetProgressPct,
+      winRate,
+      equity: equitySeries(initialBalance, trades),
+    };
+  }, [activeAccount, trades, metrics]);
 
   const filteredTrades = useMemo(() => {
-    return normalizedTrades.filter((t) => {
-      if (selectedDay && t.dayKey !== selectedDay) return false
-      if (setupFilter !== 'all' && t.setup !== setupFilter) return false
-      if (!search.trim()) return true
-      const q = search.toLowerCase()
-      return String(t.symbol || '').toLowerCase().includes(q) || String(t.setup || '').toLowerCase().includes(q)
-    })
-  }, [normalizedTrades, selectedDay, setupFilter, search])
+    if (symbolFilter === 'All Symbols') return trades;
+    return trades.filter((t) => t.symbol === symbolFilter);
+  }, [symbolFilter, trades]);
 
-  const strategyMatrix = useMemo(() => {
-    const presets = ['Silver Bullet', 'Judas Swing', 'London Open']
-    return presets.map((preset) => {
-      const rows = normalizedTrades.filter((t) => t.setup.toLowerCase() === preset.toLowerCase())
-      if (!rows.length) return { setup: preset, winRate: 0, pf: 0, expectancy: 0 }
+  const symbols = useMemo(() => ['All Symbols', ...new Set(trades.map((t) => t.symbol))], [trades]);
 
-      const wins = rows.filter((t) => t.pnl > 0)
-      const losses = rows.filter((t) => t.pnl < 0)
-      const grossWin = wins.reduce((sum, t) => sum + t.pnl, 0)
-      const grossLoss = Math.abs(losses.reduce((sum, t) => sum + t.pnl, 0))
-      const net = rows.reduce((sum, t) => sum + t.pnl, 0)
+  const accountLabel = activeAccount?.account_name || 'FTMO 100k - Active';
+  const userName = activeAccount?.user?.name || 'Alex';
 
-      return {
-        setup: preset,
-        winRate: (wins.length / rows.length) * 100,
-        pf: grossLoss > 0 ? grossWin / grossLoss : (grossWin > 0 ? 99 : 0),
-        expectancy: net / rows.length,
-      }
-    })
-  }, [normalizedTrades])
+  const consistencyStatus = data.consistencyPct < 30 ? 'Safe' : data.consistencyPct < 40 ? 'Warning' : 'Danger';
 
-  const heatmapCells = useMemo(() => {
-    const byDay = new Map()
-    normalizedTrades.forEach((t) => {
-      byDay.set(t.dayKey, (byDay.get(t.dayKey) || 0) + t.pnl)
-    })
+  const navItems = [
+    { key: 'dashboard', icon: LayoutDashboard, label: 'Dashboard', action: () => navigate('/dashboard') },
+    { key: 'trade', icon: FileText, label: 'Trade Log', action: () => navigate('/trade-log') },
+    { key: 'analytics', icon: BarChart3, label: 'Analytics', action: () => navigate('/dashboard') },
+    { key: 'risk', icon: Settings, label: 'Risk Settings', action: () => navigate('/risk-settings') },
+  ];
 
-    const cells = []
-    const today = new Date()
-    for (let i = 83; i >= 0; i -= 1) {
-      const d = new Date(today)
-      d.setDate(today.getDate() - i)
-      const key = d.toISOString().slice(0, 10)
-      const pnl = byDay.get(key) || 0
-      cells.push({ key, pnl, mood: getMood(pnl) })
-    }
-    return cells
-  }, [normalizedTrades])
+  const signOut = () => {
+    localStorage.removeItem('api_token');
+    delete axios.defaults.headers.common.Authorization;
+    navigate('/login');
+  };
 
-  function setupField(key) {
-    return (e) => setSetupForm((prev) => ({ ...prev, [key]: e.target.value }))
+  if (loading) {
+    return (
+      <div className="ctdash-loading">
+        <div className="ctdash-spinner" />
+        <p>Loading dashboard...</p>
+      </div>
+    );
   }
-
-  function tradeField(key) {
-    return (e) => setTradeForm((prev) => ({ ...prev, [key]: e.target.value }))
-  }
-
-  async function handleCreateAccount(e) {
-    e.preventDefault()
-    setActionError(null)
-    setActionMessage(null)
-
-    try {
-      await axios.post('/accounts', {
-        account_name: setupForm.account_name,
-        initial_balance: Number(setupForm.initial_balance),
-        current_balance: Number(setupForm.initial_balance),
-        profit_target: Number(setupForm.profit_target),
-        consistency_rule_percent: Number(setupForm.consistency_rule_percent),
-        daily_drawdown_limit_percent: Number(setupForm.daily_drawdown_limit_percent),
-        max_loss_limit_percent: Number(setupForm.max_loss_limit_percent),
-        timezone: setupForm.timezone || 'UTC',
-        status: 'active',
-      })
-
-      setActionMessage('Account created successfully. Command center is now live.')
-      await loadDashboardData()
-    } catch (err) {
-      setActionError(err.response?.data?.message || 'Failed to create account.')
-    }
-  }
-
-  async function handleAddTradeSubmit(e) {
-    e.preventDefault()
-    if (!activeAccount) {
-      setActionError('Create an account before adding trades.')
-      return
-    }
-
-    setSubmittingTrade(true)
-    setActionError(null)
-    setActionMessage(null)
-
-    try {
-      await axios.post(`/accounts/${activeAccount.id}/trades`, {
-        symbol: tradeForm.symbol.trim().toUpperCase(),
-        type: tradeForm.type,
-        lot_size: Number(tradeForm.lot_size || 0),
-        pnl: Number(tradeForm.pnl),
-        close_time: new Date(tradeForm.close_time).toISOString(),
-        strategy_tag: tradeForm.strategy_tag || null,
-        entry_price: tradeForm.entry_price ? Number(tradeForm.entry_price) : null,
-        exit_price: tradeForm.exit_price ? Number(tradeForm.exit_price) : null,
-      })
-
-      setActionMessage('Trade added and metrics refreshed.')
-      setShowAddTradeModal(false)
-      setTradeForm((prev) => ({ ...prev, symbol: '', pnl: '', strategy_tag: '', entry_price: '', exit_price: '' }))
-      await loadDashboardData()
-    } catch (err) {
-      setActionError(err.response?.data?.message || 'Failed to add trade.')
-    } finally {
-      setSubmittingTrade(false)
-    }
-  }
-
-  async function handleCsvImportSubmit(e) {
-    e.preventDefault()
-    if (!activeAccount) {
-      setActionError('Create an account before importing CSV.')
-      return
-    }
-    if (!csvFile) {
-      setActionError('Select a CSV file to import.')
-      return
-    }
-
-    setImportingCsv(true)
-    setActionError(null)
-    setActionMessage(null)
-
-    try {
-      const form = new FormData()
-      form.append('account_id', String(activeAccount.id))
-      form.append('csv_file', csvFile)
-
-      const res = await axios.post(`/accounts/${activeAccount.id}/import-csv`, form, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
-
-      const data = res.data?.data || {}
-      setActionMessage(`CSV imported. Added ${data.imported ?? 0}, skipped ${data.duplicates ?? 0} duplicates.`)
-      setShowCsvModal(false)
-      setCsvFile(null)
-      await loadDashboardData()
-    } catch (err) {
-      setActionError(err.response?.data?.message || 'CSV import failed.')
-    } finally {
-      setImportingCsv(false)
-    }
-  }
-
-  function jumpTo(id) {
-    const el = document.getElementById(id)
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
-
-  const serverStatus = activeAccount ? 'LIVE' : 'SETUP'
 
   return (
-    <div className="elite-shell">
-      <aside className={`elite-sidebar ${isSidebarOpen ? '' : 'collapsed'}`}>
-        <div className="elite-brand">Smaedala FX</div>
-        <button className="elite-nav-btn" title="Overview" onClick={() => jumpTo('overview-section')}><IconGrid /><span>Overview</span></button>
-        <button className="elite-nav-btn" title="Strategy Matrix" onClick={() => jumpTo('strategy-section')}><IconMatrix /><span>Strategy Matrix</span></button>
-        <button className="elite-nav-btn" title="Psychology" onClick={() => jumpTo('psychology-section')}><IconPsychology /><span>Psychology</span></button>
-        <button className="elite-nav-btn" title="Rule Presets" onClick={() => navigate('/risk-settings')}><IconRules /><span>Rule Presets</span></button>
-        <button className="elite-nav-btn" title="Settings" onClick={() => navigate('/risk-settings')}><IconSettings /><span>Settings</span></button>
+    <div className="ctdash-shell">
+      <aside className={`ctdash-sidebar ${mobileOpen ? 'open' : ''}`}>
+        <div className="ctdash-brand">CT</div>
+        <div className="ctdash-nav">
+          {navItems.map((item, idx) => (
+            <button key={item.key} className={`ctdash-nav-btn ${idx === 0 ? 'active' : ''}`} onClick={item.action} title={item.label}>
+              <item.icon size={18} />
+            </button>
+          ))}
+        </div>
+        <button className="ctdash-nav-btn ctdash-user-btn" title="User">
+          <User size={18} />
+        </button>
       </aside>
 
-      <main className="elite-main">
-        <header className="elite-header">
-          <button type="button" className="elite-icon-btn" onClick={() => setSidebarOpen((v) => !v)}>☰</button>
-
-          <div className="elite-search-wrap">
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Command palette: search symbol, strategy, or trade..."
-            />
+      <main className="ctdash-main">
+        <header className="ctdash-header">
+          <div className="ctdash-header-left">
+            <button className="ctdash-menu-btn" onClick={() => setMobileOpen((v) => !v)}>☰</button>
+            <h1>Welcome back, {userName}</h1>
           </div>
-
-          <div className="elite-ticker" role="status" aria-live="polite">
-            [DAILY ROOM: +${Math.round(dailyLossRemaining).toLocaleString()}] | [CONSISTENCY: {consistencyState.label} ({consistencyPct.toFixed(1)}%)] | [SERVER: {serverStatus}]
-          </div>
-
-          <div className="elite-profile-wrap">
-            <button type="button" className="elite-profile" onClick={() => setProfileOpen((v) => !v)}>
-              <span className="elite-avatar">S</span>
-              <span>
-                <strong>Smaedala</strong>
-                <small>PRO TRADER</small>
-              </span>
-            </button>
-            {profileOpen ? (
-              <div className="elite-profile-menu">
-                <p>{activeAccount?.account_name || 'No account'}</p>
-                <small>Account ID: {activeAccount?.id || 'N/A'}</small>
-                <button type="button" onClick={() => navigate('/risk-settings')}>Settings</button>
-                <button type="button" onClick={() => setActionMessage('Billing screen coming next.')}>Billing</button>
-                <button
-                  type="button"
-                  className="danger"
-                  onClick={() => {
-                    localStorage.removeItem('api_token')
-                    delete axios.defaults.headers.common.Authorization
-                    navigate('/login')
-                  }}
-                >
-                  Logout
-                </button>
-              </div>
-            ) : null}
+          <div className="ctdash-header-right">
+            <button className="ctdash-pill">{accountLabel} <ChevronDown size={14} /></button>
+            <span className="ctdash-pill ctdash-pill-live">Daily Loss Remaining: {formatMoney(data.dailyLossRemaining)}</span>
+            <span className="ctdash-pill">Days Remaining: 29d 0h</span>
+            <button className="ctdash-pill ctdash-pill-danger" onClick={signOut}>Logout</button>
           </div>
         </header>
 
-        <section className="elite-actions-row">
-          <button type="button" onClick={() => setShowAddTradeModal(true)}>Add Trade</button>
-          <button type="button" onClick={() => setShowCsvModal(true)}>Import MT4/5 CSV</button>
-          <button type="button" onClick={() => navigate('/trade-log')}>Open Trade Log</button>
-          <button type="button" onClick={() => navigate('/alerts')}>Open Alerts</button>
-        </section>
+        <section className="ctdash-content">
+          {error ? <div className="ctdash-alert">{error}</div> : null}
 
-        {activeAccount ? (
-          <section className="elite-liquidation-bar">
+          <div className="ctdash-filters">
             <div>
-              <strong>Distance to Liquidation</strong>
-              <span>{liquidationDistancePct.toFixed(0)}%</span>
+              <h2>Trading Dashboard</h2>
+              <p>Monitor your trading performance and risk metrics</p>
             </div>
-            <div className="elite-liquid-track">
-              <span style={{ width: `${liquidationDistancePct}%` }} />
-            </div>
-          </section>
-        ) : null}
-
-        {actionMessage ? <div className="elite-flash success">{actionMessage}</div> : null}
-        {actionError ? <div className="elite-flash error">{actionError}</div> : null}
-        {error ? <div className="elite-flash error">{error}</div> : null}
-
-        {loading ? <div className="elite-state">Loading command center...</div> : !activeAccount ? (
-          <section className="elite-card elite-setup-card">
-            <h2>Connect Your First Trading Account</h2>
-            <p>All analytics stay unset until you define your prop-firm profile and rule engine.</p>
-            <form className="elite-setup-form" onSubmit={handleCreateAccount}>
-              <label>Account Name<input value={setupForm.account_name} onChange={setupField('account_name')} placeholder="FTMO 100K" required /></label>
-              <label>Starting Balance<input type="number" min="0" step="0.01" value={setupForm.initial_balance} onChange={setupField('initial_balance')} required /></label>
-              <label>Profit Target<input type="number" min="0" step="0.01" value={setupForm.profit_target} onChange={setupField('profit_target')} required /></label>
-              <label>Consistency Rule %<input type="number" min="1" max="100" value={setupForm.consistency_rule_percent} onChange={setupField('consistency_rule_percent')} required /></label>
-              <label>Daily Drawdown %<input type="number" min="1" max="100" value={setupForm.daily_drawdown_limit_percent} onChange={setupField('daily_drawdown_limit_percent')} required /></label>
-              <label>Max Loss %<input type="number" min="1" max="100" value={setupForm.max_loss_limit_percent} onChange={setupField('max_loss_limit_percent')} required /></label>
-              <button type="submit">Activate Command Center</button>
-            </form>
-          </section>
-        ) : (
-          <>
-            <section className="elite-metric-grid">
-              <article className="elite-card elite-metric">
-                <p>EQUITY</p>
-                <h3>€{formatMoney(equity)}</h3>
-                <small>Live account balance</small>
-                <Sparkline points={sparklinePoints} />
-              </article>
-
-              <article className="elite-card elite-metric">
-                <p>TARGET PROGRESS</p>
-                <h3>{progressToTargetPct.toFixed(0)}%</h3>
-                <small>€{formatMoney(totalProfit)} / €{formatMoney(profitTarget)}</small>
-                <div className="elite-progress"><span style={{ width: `${progressToTargetPct}%` }} /></div>
-              </article>
-
-              <article className="elite-card elite-metric">
-                <p>DAILY LOSS BUFFER</p>
-                <h3>€{formatMoney(dailyLossRemaining)}</h3>
-                <small>{dailyDrawdownPercent.toFixed(2)}% used of {dailyDrawdownLimit.toFixed(2)}%</small>
-                <div className="elite-progress red"><span style={{ width: `${drawdownUsagePct}%` }} /></div>
-              </article>
-
-              <article className={`elite-card elite-metric ${consistencyState.cls}`}>
-                <p>CONSISTENCY BADGE</p>
-                <h3>{consistencyState.label}</h3>
-                <small>{consistencyPct.toFixed(1)}% of {consistencyLimit}% rule</small>
-              </article>
-            </section>
-
-            <section className="elite-core-grid">
-              <EquityChart series={dailySeries} selectedDay={selectedDay} onSelectDay={setSelectedDay} />
-
-              <aside className="elite-card elite-gauge-card">
-                <h3>Consistency Monitor</h3>
-                <p>40% rule proximity visualizer</p>
-                <label className="elite-whatif">
-                  <span>What-If: +€{whatIfBoost.toLocaleString()}</span>
-                  <input
-                    type="range"
-                    min="0"
-                    max="5000"
-                    step="250"
-                    value={whatIfBoost}
-                    onChange={(e) => setWhatIfBoost(Number(e.target.value))}
-                  />
-                </label>
-
-                <div className="elite-ring" style={{ '--ring-progress': `${consistencyUsagePct}` }}>
-                  <div>
-                    <strong>{consistencyPct.toFixed(1)}%</strong>
-                    <span>of {consistencyLimit}%</span>
-                  </div>
-                </div>
-
-                <div className="elite-threshold">
-                  <span>Danger Threshold</span>
-                  <strong>{consistencyLimit}%</strong>
-                </div>
-              </aside>
-            </section>
-
-            <section className="elite-analytics-grid">
-              <article className="elite-card" id="strategy-section">
-                <h3>Strategy Matrix</h3>
-                <div className="elite-matrix-head">
-                  <span>Setup</span>
-                  <span>Win Rate</span>
-                  <span>Profit Factor</span>
-                  <span>Expectancy</span>
-                </div>
-                {strategyMatrix.map((row) => (
-                  <div key={row.setup} className="elite-matrix-row">
-                    <span>{row.setup}</span>
-                    <span>{row.winRate.toFixed(1)}%</span>
-                    <span>{row.pf === 99 ? '∞' : row.pf.toFixed(2)}</span>
-                    <span>{row.expectancy.toFixed(2)}</span>
-                  </div>
+            <div className="ctdash-filter-actions">
+              <div className="ctdash-input-wrap">
+                <Search size={15} />
+                <input placeholder="Search symbol..." />
+              </div>
+              <select value={symbolFilter} onChange={(e) => setSymbolFilter(e.target.value)}>
+                {symbols.map((s) => (
+                  <option key={s} value={s}>{s}</option>
                 ))}
-              </article>
+              </select>
+              <button className="ctdash-export-btn"><Download size={15} /> Export</button>
+            </div>
+          </div>
 
-              <article className="elite-card" id="psychology-section">
-                <h3>Psychology Heatmap</h3>
-                <div className="elite-heatmap">
-                  {heatmapCells.map((cell) => (
-                    <span
-                      key={cell.key}
-                      className={`elite-heat ${cell.mood.cls}`}
-                      title={`${cell.key} • ${cell.mood.label} • ${cell.pnl >= 0 ? '+' : ''}${cell.pnl.toFixed(2)}`}
-                    />
-                  ))}
-                </div>
-              </article>
+          <div className="ctdash-grid ctdash-grid-4">
+            <StatCard title="Account Equity" value={formatMoney(data.currentBalance)} subtitle={`Initial: ${formatMoney(data.initialBalance)}`} />
+            <StatCard
+              title="Daily Loss Remaining"
+              value={formatMoney(data.dailyLossRemaining)}
+              subtitle="5% Max Daily"
+              progress={{ pct: clamp((data.dailyLossRemaining / Math.max(data.initialBalance * 0.05, 1)) * 100, 0, 100), color: '#ef4444' }}
+            />
+            <StatCard
+              title="Profit Target Progress"
+              value={`${formatMoney(data.targetProgressValue)} / ${formatMoney(data.target)}`}
+              subtitle={`${Math.round(data.targetProgressPct)}% Complete`}
+              progress={{ pct: data.targetProgressPct, color: '#00F2FE' }}
+            />
+            <StatCard
+              title="Consistency Score"
+              value={`${consistencyStatus} (${data.consistencyPct.toFixed(1)}%)`}
+              subtitle="Max Day vs Total"
+              status={{
+                label: consistencyStatus,
+                color: consistencyStatus === 'Safe' ? '#10B981' : consistencyStatus === 'Warning' ? '#F59E0B' : '#EF4444',
+              }}
+            />
+          </div>
+
+          <div className="ctdash-grid ctdash-grid-4 mini">
+            <MiniMetric label="Win Rate" value={`${data.winRate.toFixed(1)}%`} change="+2.3%" positive />
+            <MiniMetric label="Risk/Reward" value="1:2.4" change="+0.2" positive />
+            <MiniMetric label="Profit Factor" value="2.18" change="+0.15" positive />
+            <MiniMetric label="Total Trades" value={String(trades.length)} change={`+${Math.max(trades.length - 5, 0)}`} positive />
+          </div>
+
+          <div className="ctdash-grid ctdash-main-row">
+            <section className="ctdash-card ctdash-chart-card">
+              <div className="ctdash-card-head">
+                <h3>Equity Curve</h3>
+                <span>Last 30 days</span>
+              </div>
+              <EquitySvgChart points={data.equity} />
             </section>
 
-            <section className="elite-card elite-trade-gallery">
-              <div className="elite-gallery-head">
-                <h3>Trade Gallery</h3>
-                <div className="elite-gallery-filters">
-                  <select value={setupFilter} onChange={(e) => setSetupFilter(e.target.value)}>
-                    {setupOptions.map((opt) => (
-                      <option key={opt} value={opt}>{opt === 'all' ? 'All Setups' : opt}</option>
+            <section className="ctdash-card">
+              <h3>Consistency Meter</h3>
+              <p className="muted">Max Day vs Total Profit (40% Rule)</p>
+              <div className="ctdash-ring-wrap">
+                <div className="ctdash-ring" style={{ '--value': `${clamp(data.consistencyPct, 0, 100)}` }}>
+                  <div>
+                    <strong>{data.consistencyPct.toFixed(1)}%</strong>
+                    <span>of Total</span>
+                  </div>
+                </div>
+              </div>
+              <div className="ctdash-status-line">
+                <span className={`dot ${consistencyStatus.toLowerCase()}`} />
+                <span>{consistencyStatus}</span>
+              </div>
+              <div className="ctdash-threshold">
+                <span>Danger Threshold</span>
+                <strong>40%</strong>
+              </div>
+            </section>
+
+            <section className="ctdash-card">
+              <h3>Quick Statistics</h3>
+              <QuickStat label="Average Win" value="$125.40" trend="+8.2%" good />
+              <QuickStat label="Average Loss" value="$88.20" trend="-3.1%" bad />
+              <QuickStat label="Largest Win" value="$680.00" trend="EUR/USD" good />
+              <QuickStat label="Largest Loss" value="$120.50" trend="GBP/USD" bad />
+              <QuickStat label="Best Day" value="$1,245.80" trend="Monday" good />
+              <QuickStat label="Max Drawdown" value="$850.00" trend="-0.85%" bad />
+            </section>
+          </div>
+
+          <div className="ctdash-grid ctdash-grid-2">
+            <section className="ctdash-card">
+              <h3>Win/Loss Distribution</h3>
+              <SimpleBarChart
+                rows={[
+                  { label: 'Mon', wins: 12, losses: 3 },
+                  { label: 'Tue', wins: 8, losses: 5 },
+                  { label: 'Wed', wins: 15, losses: 2 },
+                  { label: 'Thu', wins: 10, losses: 6 },
+                  { label: 'Fri', wins: 14, losses: 4 },
+                ]}
+              />
+            </section>
+            <section className="ctdash-card">
+              <h3>Performance by Symbol</h3>
+              <PerformanceRows />
+            </section>
+          </div>
+
+          <div className="ctdash-grid ctdash-grid-3">
+            <section className="ctdash-card span-2">
+              <h3>Recent Trades</h3>
+              <div className="ctdash-table-wrap">
+                <table className="ctdash-table">
+                  <thead>
+                    <tr>
+                      <th>Symbol</th>
+                      <th>Type</th>
+                      <th>Lot Size</th>
+                      <th>P&L</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredTrades.slice(0, 8).map((trade) => (
+                      <tr key={trade.id}>
+                        <td>{trade.symbol}</td>
+                        <td>
+                          <span className={`tag ${trade.type === 'BUY' ? 'buy' : 'sell'}`}>{trade.type}</span>
+                        </td>
+                        <td>{Number(trade.lotSize || 0).toFixed(2)}</td>
+                        <td className={trade.pnl >= 0 ? 'good' : 'bad'}>
+                          {trade.pnl >= 0 ? '+' : ''}{formatMoney(trade.pnl)}
+                        </td>
+                      </tr>
                     ))}
-                  </select>
-                </div>
+                  </tbody>
+                </table>
               </div>
-
-              <div className="elite-trades-head">
-                <span>Symbol</span>
-                <span>Type</span>
-                <span>Lot Size</span>
-                <span>PnL</span>
-              </div>
-
-              {filteredTrades.length === 0 ? (
-                <div className="elite-state">No trades match current filters.</div>
-              ) : filteredTrades.map((t) => (
-                <div key={t.id} className="elite-trades-row">
-                  <span>{t.symbol || '-'}</span>
-                  <span>{String(t.type || '').toUpperCase()}</span>
-                  <span>{Number(t.lot_size || 0).toFixed(2)}</span>
-                  <span className={t.pnl >= 0 ? 'pos' : 'neg'}>{t.pnl >= 0 ? '+' : ''}{formatMoney(t.pnl)}</span>
-                </div>
-              ))}
             </section>
-          </>
-        )}
 
-        {showAddTradeModal ? (
-          <div className="elite-modal-backdrop" onClick={() => setShowAddTradeModal(false)}>
-            <div className="elite-modal" onClick={(e) => e.stopPropagation()}>
-              <h3>Add Trade</h3>
-              <form className="elite-modal-form" onSubmit={handleAddTradeSubmit}>
-                <label>Symbol<input value={tradeForm.symbol} onChange={tradeField('symbol')} placeholder="XAUUSD" required /></label>
-                <label>Type
-                  <select value={tradeForm.type} onChange={tradeField('type')}>
-                    <option value="buy">Buy</option>
-                    <option value="sell">Sell</option>
-                  </select>
-                </label>
-                <label>Lot Size<input type="number" min="0" step="0.01" value={tradeForm.lot_size} onChange={tradeField('lot_size')} /></label>
-                <label>PnL<input type="number" step="0.01" value={tradeForm.pnl} onChange={tradeField('pnl')} required /></label>
-                <label>Close Time<input type="datetime-local" value={tradeForm.close_time} onChange={tradeField('close_time')} required /></label>
-                <label>Strategy Tag<input value={tradeForm.strategy_tag} onChange={tradeField('strategy_tag')} placeholder="Silver Bullet" /></label>
-                <div className="elite-modal-actions">
-                  <button type="button" onClick={() => setShowAddTradeModal(false)}>Cancel</button>
-                  <button type="submit" disabled={submittingTrade}>{submittingTrade ? 'Saving...' : 'Save Trade'}</button>
-                </div>
-              </form>
-            </div>
+            <section className="ctdash-card">
+              <h3>Trading Activity Calendar</h3>
+              <CalendarHeatmap days={buildCalendarDays()} />
+            </section>
           </div>
-        ) : null}
-
-        {showCsvModal ? (
-          <div className="elite-modal-backdrop" onClick={() => setShowCsvModal(false)}>
-            <div className="elite-modal" onClick={(e) => e.stopPropagation()}>
-              <h3>Import MT4/MT5 CSV</h3>
-              <form className="elite-modal-form" onSubmit={handleCsvImportSubmit}>
-                <label>CSV File<input type="file" accept=".csv,.txt" onChange={(e) => setCsvFile(e.target.files?.[0] || null)} required /></label>
-                <small>Expected headers include symbol, type, pnl, close_time.</small>
-                <div className="elite-modal-actions">
-                  <button type="button" onClick={() => setShowCsvModal(false)}>Cancel</button>
-                  <button type="submit" disabled={importingCsv}>{importingCsv ? 'Importing...' : 'Import CSV'}</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        ) : null}
+        </section>
       </main>
+
+      <style>{`
+        .ctdash-shell { min-height: 100vh; display: grid; grid-template-columns: 64px 1fr; background: #101217; color: #f4f7fb; }
+        .ctdash-sidebar { background: #0d0f14; border-right: 1px solid #1e2025; display: flex; flex-direction: column; align-items: center; padding: 16px 8px; gap: 12px; }
+        .ctdash-brand { width: 40px; height: 40px; border-radius: 12px; border: 1px solid rgba(0,242,254,0.35); color: #00f2fe; display: grid; place-items: center; font-weight: 800; }
+        .ctdash-nav { display: flex; flex-direction: column; gap: 10px; width: 100%; align-items: center; }
+        .ctdash-nav-btn { width: 42px; height: 42px; border-radius: 12px; border: 1px solid #2a2d35; background: #151923; color: #9ca3af; display: grid; place-items: center; cursor: pointer; transition: all .2s; }
+        .ctdash-nav-btn:hover, .ctdash-nav-btn.active { color: #00f2fe; border-color: rgba(0,242,254,.45); background: rgba(0,242,254,.1); }
+        .ctdash-user-btn { margin-top: auto; }
+
+        .ctdash-main { background: radial-gradient(800px 420px at 10% -10%, rgba(0,242,254,.12), transparent 55%), radial-gradient(660px 340px at 95% 0, rgba(16,185,129,.10), transparent 52%), #101217; }
+        .ctdash-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid #1e2025; padding: 10px 18px; background: rgba(13,15,20,.85); backdrop-filter: blur(10px); position: sticky; top: 0; z-index: 40; }
+        .ctdash-header-left { display: flex; align-items: center; gap: 12px; }
+        .ctdash-header-left h1 { margin: 0; font-size: 38px; font-weight: 700; letter-spacing: -0.02em; }
+        .ctdash-menu-btn { width: 36px; height: 36px; border-radius: 10px; border: 1px solid #2a2d35; background: #1e2025; color: #d9dee9; display: none; }
+        .ctdash-header-right { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+        .ctdash-pill { height: 36px; border-radius: 999px; border: 1px solid #2a2d35; background: #1e2025; color: #f4f7fb; padding: 0 14px; display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+        .ctdash-pill-live { color: #10b981; border-color: rgba(16,185,129,.35); background: rgba(16,185,129,.08); }
+        .ctdash-pill-danger { color: #ef4444; border-color: rgba(239,68,68,.35); background: rgba(239,68,68,.08); cursor: pointer; }
+
+        .ctdash-content { padding: 18px; display: grid; gap: 14px; }
+        .ctdash-alert { border: 1px solid rgba(245,158,11,.5); background: rgba(245,158,11,.1); color: #fcd34d; padding: 10px 12px; border-radius: 10px; }
+
+        .ctdash-filters { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: end; }
+        .ctdash-filters h2 { margin: 0; font-size: 24px; }
+        .ctdash-filters p { margin: 4px 0 0; color: #9ca3af; font-size: 14px; }
+        .ctdash-filter-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        .ctdash-input-wrap { height: 36px; min-width: 220px; border-radius: 10px; border: 1px solid #2a2d35; background: #1e2025; display: flex; align-items: center; gap: 8px; padding: 0 10px; color: #9ca3af; }
+        .ctdash-input-wrap input { border: 0; outline: 0; background: transparent; color: #f4f7fb; width: 100%; }
+        .ctdash-filter-actions select { height: 36px; border-radius: 10px; border: 1px solid #2a2d35; background: #1e2025; color: #f4f7fb; padding: 0 10px; }
+        .ctdash-export-btn { height: 36px; border-radius: 10px; border: 1px solid #00f2fe; background: #00f2fe; color: #001118; display: inline-flex; gap: 8px; align-items: center; padding: 0 12px; font-weight: 600; }
+
+        .ctdash-grid { display: grid; gap: 14px; }
+        .ctdash-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        .ctdash-grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .ctdash-grid-3 { grid-template-columns: 2fr 1fr 1fr; }
+        .ctdash-main-row { grid-template-columns: 2fr 1fr 1fr; }
+        .ctdash-grid.mini .ctdash-card { padding: 14px; }
+
+        .ctdash-card { background: #1e2025; border: 1px solid #2a2d35; border-radius: 14px; padding: 18px; }
+        .ctdash-card h3 { margin: 0 0 10px; font-size: 28px; }
+        .ctdash-card .muted { color: #9ca3af; margin: 0 0 12px; font-size: 14px; }
+        .ctdash-card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .ctdash-card-head span { color: #9ca3af; font-size: 12px; }
+
+        .stat-title { color: #9ca3af; font-size: 14px; margin-bottom: 8px; }
+        .stat-value { display: flex; align-items: center; gap: 10px; font-size: 44px; font-weight: 700; margin-bottom: 8px; line-height: 1; }
+        .stat-sub { color: #9ca3af; font-size: 13px; }
+        .stat-progress { height: 8px; background: #0d0f14; border-radius: 999px; overflow: hidden; margin-top: 10px; }
+        .stat-progress > span { display: block; height: 100%; border-radius: 999px; }
+        .status-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+        .status-chip i { width: 8px; height: 8px; border-radius: 999px; display: inline-block; }
+
+        .mini .mini-label { color: #9ca3af; font-size: 13px; margin-bottom: 4px; }
+        .mini .mini-value { font-size: 26px; font-weight: 700; }
+        .mini .mini-change { font-size: 12px; margin-top: 2px; }
+
+        .ctdash-chart-card svg { width: 100%; height: 320px; border-radius: 10px; background: #121722; }
+
+        .ctdash-ring-wrap { display: flex; justify-content: center; margin: 8px 0 14px; }
+        .ctdash-ring { --value: 0; width: 180px; height: 180px; border-radius: 50%; background: conic-gradient(#10b981 calc(var(--value) * 1%), #2a2d35 0); display: grid; place-items: center; }
+        .ctdash-ring > div { width: 140px; height: 140px; border-radius: 50%; background: #151922; display: grid; place-items: center; text-align: center; }
+        .ctdash-ring strong { font-size: 34px; display: block; }
+        .ctdash-ring span { font-size: 12px; color: #9ca3af; }
+        .ctdash-status-line { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 12px; }
+        .ctdash-status-line .dot { width: 10px; height: 10px; border-radius: 999px; display: inline-block; }
+        .ctdash-status-line .dot.safe { background: #10b981; }
+        .ctdash-status-line .dot.warning { background: #f59e0b; }
+        .ctdash-status-line .dot.danger { background: #ef4444; }
+        .ctdash-threshold { border: 1px solid #2a2d35; background: #10151f; border-radius: 10px; padding: 10px 12px; display: flex; justify-content: space-between; align-items: center; }
+        .ctdash-threshold span { color: #9ca3af; font-size: 13px; }
+        .ctdash-threshold strong { color: #ef4444; }
+
+        .quick-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid #2a2d35; }
+        .quick-row:last-child { border-bottom: 0; }
+        .quick-row .left { color: #9ca3af; font-size: 13px; }
+        .quick-row .right { display: flex; gap: 8px; align-items: center; }
+        .quick-row .val { font-size: 13px; font-weight: 600; }
+        .good { color: #10b981; }
+        .bad { color: #ef4444; }
+
+        .wl-row { display: grid; grid-template-columns: 56px 1fr; gap: 10px; align-items: center; margin: 10px 0; }
+        .wl-bars { display: grid; gap: 6px; }
+        .wl-bar { height: 10px; border-radius: 999px; background: #111722; overflow: hidden; }
+        .wl-bar > span { display: block; height: 100%; border-radius: 999px; }
+
+        .symbol-row { border: 1px solid #2a2d35; border-radius: 10px; padding: 10px; margin-bottom: 10px; background: #151922; }
+        .symbol-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .symbol-badge { font-size: 11px; border-radius: 999px; padding: 3px 8px; background: rgba(16,185,129,.2); color: #10b981; }
+        .symbol-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+        .symbol-grid p { margin: 0; font-size: 11px; color: #9ca3af; }
+        .symbol-grid strong { font-size: 13px; }
+
+        .ctdash-table-wrap { overflow: auto; }
+        .ctdash-table { width: 100%; border-collapse: collapse; }
+        .ctdash-table th, .ctdash-table td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #2a2d35; font-size: 14px; }
+        .ctdash-table th { color: #9ca3af; font-weight: 500; font-size: 13px; }
+        .ctdash-table td:nth-child(3), .ctdash-table th:nth-child(3), .ctdash-table td:nth-child(4), .ctdash-table th:nth-child(4) { text-align: right; }
+        .tag { font-size: 11px; padding: 4px 8px; border-radius: 8px; font-weight: 700; }
+        .tag.buy { background: rgba(16,185,129,.16); color: #10b981; }
+        .tag.sell { background: rgba(239,68,68,.16); color: #ef4444; }
+
+        .heat-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+        .heat-cell { aspect-ratio: 1; border-radius: 8px; font-size: 11px; display: grid; place-items: center; color: #fff; position: relative; }
+        .heat-cell.inactive { background: #161b25; color: #64748b; }
+
+        .ctdash-loading { min-height: 100vh; display: grid; place-items: center; background: #101217; color: #dce7f9; }
+        .ctdash-loading > div, .ctdash-loading p { margin: 0; }
+        .ctdash-spinner { width: 44px; height: 44px; border: 4px solid rgba(0,242,254,.2); border-top-color: #00f2fe; border-radius: 999px; animation: spin 1s linear infinite; margin: 0 auto 10px; }
+
+        .span-2 { grid-column: span 2; }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        @media (max-width: 1280px) {
+          .ctdash-header-left h1 { font-size: 30px; }
+          .ctdash-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .ctdash-main-row { grid-template-columns: 1fr; }
+          .ctdash-grid-3 { grid-template-columns: 1fr; }
+          .span-2 { grid-column: auto; }
+        }
+
+        @media (max-width: 900px) {
+          .ctdash-shell { grid-template-columns: 1fr; }
+          .ctdash-sidebar { position: fixed; left: -84px; top: 0; bottom: 0; z-index: 60; transition: left .2s ease; }
+          .ctdash-sidebar.open { left: 0; }
+          .ctdash-menu-btn { display: inline-grid; place-items: center; }
+          .ctdash-header { padding: 10px 12px; }
+          .ctdash-header-left h1 { font-size: 22px; }
+          .ctdash-header-right { gap: 6px; }
+          .ctdash-pill { height: 32px; font-size: 12px; padding: 0 10px; }
+          .ctdash-content { padding: 12px; }
+          .ctdash-grid-4, .ctdash-grid-2 { grid-template-columns: 1fr; }
+          .ctdash-filters { align-items: stretch; }
+          .ctdash-filter-actions { width: 100%; }
+          .ctdash-input-wrap { min-width: 0; flex: 1; }
+          .ctdash-card h3 { font-size: 22px; }
+          .stat-value { font-size: 32px; }
+        }
+      `}</style>
     </div>
-  )
+  );
+};
+
+function StatCard({ title, value, subtitle, progress, status }) {
+  return (
+    <div className="ctdash-card">
+      <div className="stat-title">{title}</div>
+      <div className="stat-value">
+        <span>{value}</span>
+        {status ? (
+          <span className="status-chip" style={{ color: status.color }}>
+            <i style={{ backgroundColor: status.color }} />
+            {status.label}
+          </span>
+        ) : null}
+      </div>
+      {subtitle ? <div className="stat-sub">{subtitle}</div> : null}
+      {progress ? (
+        <div className="stat-progress">
+          <span style={{ width: `${clamp(progress.pct, 0, 100)}%`, backgroundColor: progress.color }} />
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
+function MiniMetric({ label, value, change, positive }) {
+  return (
+    <div className="ctdash-card mini">
+      <div className="mini-label">{label}</div>
+      <div className="mini-value">{value}</div>
+      <div className={`mini-change ${positive ? 'good' : 'bad'}`}>{change}</div>
+    </div>
+  );
+}
+
+function EquitySvgChart({ points }) {
+  const w = 900;
+  const h = 320;
+  const p = 24;
+  const min = Math.min(...points.map((d) => d.value));
+  const max = Math.max(...points.map((d) => d.value));
+  const range = Math.max(max - min, 1);
+
+  const mapped = points.map((pt, i) => {
+    const x = p + (i / Math.max(points.length - 1, 1)) * (w - p * 2);
+    const y = h - p - ((pt.value - min) / range) * (h - p * 2);
+    return { ...pt, x, y };
+  });
+
+  const line = mapped.map((pt) => `${pt.x},${pt.y}`).join(' ');
+  const area = `${line} ${w - p},${h - p} ${p},${h - p}`;
+
+  const axisTicks = [0, 1, 2, 3, 4].map((n) => {
+    const ratio = n / 4;
+    const y = h - p - ratio * (h - p * 2);
+    const value = min + ratio * range;
+    return { y, label: `$${Math.round(value / 1000)}k` };
+  });
+
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="ctdash-area" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#00F2FE" stopOpacity="0.35" />
+          <stop offset="100%" stopColor="#00F2FE" stopOpacity="0.04" />
+        </linearGradient>
+      </defs>
+
+      {axisTicks.map((tick, i) => (
+        <g key={i}>
+          <line x1={p} y1={tick.y} x2={w - p} y2={tick.y} stroke="#2a2d35" strokeDasharray="5 6" />
+          <text x={5} y={tick.y + 4} fill="#7f8aa3" fontSize="12">{tick.label}</text>
+        </g>
+      ))}
+
+      <polygon points={area} fill="url(#ctdash-area)" />
+      <polyline points={line} fill="none" stroke="#00F2FE" strokeWidth="3" strokeLinecap="round" />
+      {mapped.filter((_, i) => i % 4 === 0).map((pt, idx) => (
+        <g key={idx}>
+          <circle cx={pt.x} cy={pt.y} r="3.5" fill="#00F2FE" />
+          <text x={pt.x - 10} y={h - 6} fill="#7f8aa3" fontSize="12">{`D${idx * 4 + 1}`}</text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+function QuickStat({ label, value, trend, good, bad }) {
+  return (
+    <div className="quick-row">
+      <div className="left">{label}</div>
+      <div className="right">
+        <span className="val">{value}</span>
+        <span className={good ? 'good' : bad ? 'bad' : ''}>{trend}</span>
+      </div>
+    </div>
+  );
+}
+
+function SimpleBarChart({ rows }) {
+  const max = Math.max(...rows.map((r) => Math.max(r.wins, r.losses)), 1);
+  return (
+    <div>
+      {rows.map((row) => (
+        <div key={row.label} className="wl-row">
+          <strong>{row.label}</strong>
+          <div className="wl-bars">
+            <div className="wl-bar"><span style={{ width: `${(row.wins / max) * 100}%`, background: '#10B981' }} /></div>
+            <div className="wl-bar"><span style={{ width: `${(row.losses / max) * 100}%`, background: '#EF4444' }} /></div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PerformanceRows() {
+  const rows = [
+    { symbol: 'EUR/USD', trades: 45, winRate: 68, pnl: 2450.5, avgWin: 125.5, avgLoss: -85.2 },
+    { symbol: 'GBP/USD', trades: 32, winRate: 62, pnl: 1820.3, avgWin: 110.3, avgLoss: -92.1 },
+    { symbol: 'USD/JPY', trades: 28, winRate: 71, pnl: 1650.8, avgWin: 140.2, avgLoss: -78.5 },
+    { symbol: 'AUD/USD', trades: 24, winRate: 58, pnl: 980.4, avgWin: 95.8, avgLoss: -88.6 },
+  ];
+
+  return (
+    <div>
+      {rows.map((item) => (
+        <div key={item.symbol} className="symbol-row">
+          <div className="symbol-top">
+            <strong>{item.symbol}</strong>
+            <div className="good">+{formatMoney(item.pnl)}</div>
+          </div>
+          <div className="symbol-grid">
+            <div><p>Win Rate</p><strong>{item.winRate}%</strong></div>
+            <div><p>Avg Win</p><strong className="good">{formatMoney(item.avgWin)}</strong></div>
+            <div><p>Avg Loss</p><strong className="bad">{formatMoney(item.avgLoss)}</strong></div>
+          </div>
+          <div className="stat-progress" style={{ marginTop: 8 }}>
+            <span style={{ width: `${item.winRate}%`, backgroundColor: '#00F2FE' }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CalendarHeatmap({ days }) {
+  const color = (pnl, current) => {
+    if (!current) return 'inactive';
+    if (pnl === 0) return '#1e2433';
+    if (pnl > 400) return '#10B981';
+    if (pnl > 200) return '#34D399';
+    if (pnl > 0) return '#6EE7B7';
+    if (pnl > -100) return '#FCA5A5';
+    if (pnl > -200) return '#F87171';
+    return '#EF4444';
+  };
+
+  return (
+    <div>
+      <div className="heat-grid">
+        {days.map((d, i) => (
+          <div
+            key={`${d.day}-${i}`}
+            className={`heat-cell ${!d.current ? 'inactive' : ''}`}
+            style={!d.current ? undefined : { background: color(d.pnl, d.current) }}
+            title={d.current ? `${d.trades} trades / ${d.pnl >= 0 ? '+' : ''}${formatMoney(d.pnl)}` : 'Other month'}
+          >
+            {d.day}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default Dashboard;
