@@ -116,7 +116,7 @@ export function RecentTrades() {
 
   return (
     <div 
-      className="rounded-lg p-4 sm:p-6 border w-full min-w-0"
+      className="rounded-lg p-4 sm:p-6 border w-full min-w-0 dash-hover-card"
       style={{ backgroundColor: c.bg, borderColor: c.border }}
     >
       <div className="flex flex-col gap-3 mb-4">
@@ -229,7 +229,7 @@ export function RecentTrades() {
                     trade.pnl >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'
                   }`}
                 >
-                  {trade.pnl >= 0 ? '+' : ''}€{trade.pnl.toFixed(2)}
+                  {trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)}
                 </td>
               </tr>
             ))}

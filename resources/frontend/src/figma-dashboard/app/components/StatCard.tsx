@@ -43,7 +43,7 @@ export function StatCard({ title, value, subtitle, progressBar, statusIndicator,
 
   return (
     <div 
-      className="rounded-lg p-6 border"
+      className="rounded-lg p-6 border dash-hover-card"
       style={{ backgroundColor: c.bg, borderColor: c.border }}
     >
       <div className="flex flex-col gap-3">

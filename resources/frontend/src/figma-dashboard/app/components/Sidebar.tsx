@@ -10,7 +10,7 @@ interface SidebarProps {
   onNavigateMobile?: () => void;
 }
 
-function SidebarLogo({ showText }: { showText: boolean }) {
+function SidebarLogo({ showText, textColor }: { showText: boolean; textColor: string }) {
   return (
     <div
       className="authv2-logo"
@@ -19,6 +19,7 @@ function SidebarLogo({ showText }: { showText: boolean }) {
         width: '100%',
         fontSize: showText ? '1.1rem' : '1rem',
         gap: showText ? '10px' : '0',
+        color: textColor,
       }}
     >
       <div className="authv2-logo-icon" aria-hidden="true" style={{ width: '30px', height: '30px', borderRadius: '8px' }}>
@@ -26,7 +27,7 @@ function SidebarLogo({ showText }: { showText: boolean }) {
           <path d="M4 18h16v2H2V4h2v14Zm4-3 3.5-3.5 2.8 2.8L20 8.6V12h2V5h-7v2h3.6l-4.3 4.3-2.8-2.8L6 13.6 8 15Z" />
         </svg>
       </div>
-      {showText ? <span style={{ letterSpacing: '-0.01em' }}>ConsisTracker</span> : null}
+      {showText ? <span style={{ letterSpacing: '-0.01em', color: textColor }}>ConsisTracker</span> : null}
     </div>
   );
 }
@@ -73,7 +74,7 @@ export function Sidebar({ variant = 'desktop', expanded = false, onNavigateMobil
     >
       {/* Logo */}
       <div className={`${showLabels ? 'px-1 mb-6' : 'mb-6'}`} style={{ width: '100%' }}>
-        <SidebarLogo showText={showLabels} />
+        <SidebarLogo showText={showLabels} textColor={theme === 'dark' ? '#FFFFFF' : '#0F172A'} />
       </div>
 
       {/* Navigation Items */}

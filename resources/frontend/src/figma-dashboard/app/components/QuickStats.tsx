@@ -80,14 +80,14 @@ export function QuickStats() {
       <h3 className="text-lg mb-4" style={{ color: c.text }}>Quick Statistics</h3>
 
       <div className="space-y-1 divide-y" style={{ borderColor: c.border }}>
-        <StatItem label="Average Win" value="€125.40" trend="up" trendValue="+8.2%" />
-        <StatItem label="Average Loss" value="€88.20" trend="down" trendValue="-3.1%" />
-        <StatItem label="Largest Win" value="€680.00" trend="up" trendValue="EUR/USD" />
-        <StatItem label="Largest Loss" value="€120.50" trend="down" trendValue="GBP/USD" />
+        <StatItem label="Average Win" value="$125.40" trend="up" trendValue="+8.2%" />
+        <StatItem label="Average Loss" value="$88.20" trend="down" trendValue="-3.1%" />
+        <StatItem label="Largest Win" value="$680.00" trend="up" trendValue="EUR/USD" />
+        <StatItem label="Largest Loss" value="$120.50" trend="down" trendValue="GBP/USD" />
         <StatItem label="Avg Trade Duration" value="4.2 hours" trend="neutral" />
-        <StatItem label="Best Trading Day" value="€1,245.80" trend="up" trendValue="Monday" />
+        <StatItem label="Best Trading Day" value="$1,245.80" trend="up" trendValue="Monday" />
         <StatItem label="Consecutive Wins" value="8 trades" trend="up" />
-        <StatItem label="Max Drawdown" value="€850.00" trend="down" trendValue="-0.85%" />
+        <StatItem label="Max Drawdown" value="$850.00" trend="down" trendValue="-0.85%" />
       </div>
     </div>
   );

@@ -43,7 +43,7 @@ export function ConsistencyMeter({ percentage }: ConsistencyMeterProps) {
 
   return (
     <div
-      className="rounded-lg p-6 border h-full"
+      className="rounded-lg p-6 border h-full dash-hover-card"
       style={{ backgroundColor: c.bg, borderColor: c.border }}
     >
       <h3 className="text-lg mb-4" style={{ color: c.text }}>

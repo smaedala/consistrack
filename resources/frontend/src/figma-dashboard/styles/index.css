@@ -2,6 +2,35 @@
 @import './tailwind.css';
 @import './theme.css';
 
+.dash-hover-card {
+  transition: transform 180ms ease, box-shadow 220ms ease, border-color 220ms ease;
+}
+
+.dash-hover-control {
+  transition: transform 150ms ease, box-shadow 180ms ease, filter 180ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .dash-hover-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(0, 242, 254, 0.36) !important;
+    box-shadow: 0 12px 26px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(0, 242, 254, 0.12) inset;
+  }
+
+  .dash-hover-control:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.2);
+    filter: brightness(1.03);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dash-hover-card,
+  .dash-hover-control {
+    transition: none !important;
+  }
+}
+
 .dashboard-row-4 {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -37,6 +66,13 @@
   min-width: 0;
 }
 
+.dashboard-row-4 > div,
+.dashboard-row-3 > div,
+.dashboard-row-2 > div,
+.dashboard-metrics-row > div {
+  min-width: 0;
+}
+
 @media (max-width: 1279px) {
   .dashboard-row-4 {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -66,8 +102,48 @@
     grid-template-columns: 1fr;
   }
 
+  .dashboard-row-3,
+  .dashboard-row-2,
+  .dashboard-row-2-1 {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
   .dashboard-metrics-row {
     grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .dashboard-row-4 {
+    gap: 1rem;
+  }
+
+  .dashboard-row-4 > div,
+  .dashboard-row-3 > div,
+  .dashboard-row-2 > div,
+  .dashboard-row-2-1 > div,
+  .dashboard-metrics-row > div {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .dashboard-row-2-1 .recent-trades-slot,
+  .dashboard-row-2-1 .calendar-slot {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .dashboard-row-2-1 .calendar-slot {
+    order: 1;
+  }
+
+  .dashboard-row-2-1 .recent-trades-slot {
+    order: 2;
+  }
+
+  .dashboard-equal-height-card {
+    min-height: auto !important;
+    height: auto !important;
   }
 
   .winloss-card-grid {

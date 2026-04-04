@@ -77,7 +77,7 @@ export function PerformanceBySymbol() {
                   className="font-semibold"
                   style={{ color: item.pnl >= 0 ? '#10B981' : '#EF4444' }}
                 >
-                  {item.pnl >= 0 ? '+' : ''}€{item.pnl.toFixed(2)}
+                  {item.pnl >= 0 ? '+' : ''}${item.pnl.toFixed(2)}
                 </span>
               </div>
             </div>
@@ -89,11 +89,11 @@ export function PerformanceBySymbol() {
               </div>
               <div>
                 <p className="text-xs mb-1" style={{ color: c.subText }}>Avg Win</p>
-                <p className="text-sm font-medium" style={{ color: '#10B981' }}>€{item.avgWin.toFixed(2)}</p>
+                <p className="text-sm font-medium" style={{ color: '#10B981' }}>${item.avgWin.toFixed(2)}</p>
               </div>
               <div>
                 <p className="text-xs mb-1" style={{ color: c.subText }}>Avg Loss</p>
-                <p className="text-sm font-medium" style={{ color: '#EF4444' }}>€{item.avgLoss.toFixed(2)}</p>
+                <p className="text-sm font-medium" style={{ color: '#EF4444' }}>${item.avgLoss.toFixed(2)}</p>
               </div>
             </div>
 

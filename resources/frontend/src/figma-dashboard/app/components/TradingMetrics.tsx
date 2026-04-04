@@ -31,7 +31,7 @@ function MetricCard({ icon, label, value, change, isPositive }: MetricCardProps)
 
   return (
     <div
-      className="rounded-lg p-4 border"
+      className="rounded-lg p-4 border dash-hover-card"
       style={{ backgroundColor: c.bg, borderColor: c.border }}
     >
       <div className="flex items-start justify-between mb-3">

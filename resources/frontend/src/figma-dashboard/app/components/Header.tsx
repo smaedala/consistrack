@@ -39,14 +39,14 @@ export function Header({ isMobile = false, onMobileMenuClick }: HeaderProps) {
       <div className="flex items-center gap-3 min-w-0">
         <button
           type="button"
-          className="w-10 h-10 rounded-lg flex items-center justify-center"
+          className="w-10 h-10 rounded-lg flex items-center justify-center dash-hover-control"
           style={{ backgroundColor: c.cardBg }}
           onClick={onMobileMenuClick}
           aria-label="Open menu"
         >
           <Menu className="w-5 h-5" style={{ color: c.subText }} />
         </button>
-        <h1 className="text-xl" style={{ color: c.text }}>Welcome back, Alex</h1>
+        <h1 className="text-lg sm:text-xl truncate" style={{ color: c.text }}>Welcome back, Alex</h1>
       </div>
 
       {/* Right Side: Account Selector, Theme Toggle & Notifications */}
@@ -54,7 +54,7 @@ export function Header({ isMobile = false, onMobileMenuClick }: HeaderProps) {
         {/* Account Selector */}
         {!isMobile ? (
           <button 
-            className="flex items-center gap-2 transition-colors px-4 py-2 rounded-lg"
+            className="flex items-center gap-2 transition-colors px-4 py-2 rounded-lg dash-hover-control"
             style={{ backgroundColor: c.cardBg }}
             onMouseEnter={(e) => e.currentTarget.style.backgroundColor = c.cardHover}
             onMouseLeave={(e) => e.currentTarget.style.backgroundColor = c.cardBg}
@@ -67,7 +67,7 @@ export function Header({ isMobile = false, onMobileMenuClick }: HeaderProps) {
         {/* Theme Toggle */}
         <button 
           onClick={toggleTheme}
-          className="w-10 h-10 rounded-lg transition-colors flex items-center justify-center"
+          className="w-10 h-10 rounded-lg transition-colors flex items-center justify-center dash-hover-control"
           style={{ backgroundColor: c.cardBg }}
           onMouseEnter={(e) => e.currentTarget.style.backgroundColor = c.cardHover}
           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = c.cardBg}
@@ -81,7 +81,7 @@ export function Header({ isMobile = false, onMobileMenuClick }: HeaderProps) {
 
         {/* Notification Bell */}
         <button 
-          className="w-10 h-10 rounded-lg transition-colors flex items-center justify-center relative"
+          className="w-10 h-10 rounded-lg transition-colors flex items-center justify-center relative dash-hover-control"
           style={{ backgroundColor: c.cardBg }}
           onMouseEnter={(e) => e.currentTarget.style.backgroundColor = c.cardHover}
           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = c.cardBg}

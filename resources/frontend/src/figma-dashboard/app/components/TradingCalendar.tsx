@@ -72,7 +72,7 @@ export function TradingCalendar() {
 
   return (
     <div
-      className="rounded-lg p-4 sm:p-6 border w-full min-w-0"
+      className="rounded-lg p-4 sm:p-6 border w-full min-w-0 dash-hover-card"
       style={{ backgroundColor: c.bg, borderColor: c.border }}
     >
       <div className="flex items-center justify-between mb-4">
@@ -137,7 +137,7 @@ export function TradingCalendar() {
               >
                 <div className="font-medium">{dayData.trades} trades</div>
                 <div style={{ color: dayData.pnl >= 0 ? '#10B981' : '#EF4444' }}>
-                  {dayData.pnl >= 0 ? '+' : ''}€{dayData.pnl.toFixed(2)}
+                  {dayData.pnl >= 0 ? '+' : ''}${dayData.pnl.toFixed(2)}
                 </div>
               </div>
             )}

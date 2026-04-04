@@ -49,7 +49,7 @@ export function EquityCurveChart() {
 
   return (
     <div 
-      className="rounded-lg p-6 border"
+      className="rounded-lg p-6 border dash-hover-card"
       style={{ backgroundColor: c.bg, borderColor: c.border }}
     >
       <h3 className="text-lg mb-4" style={{ color: c.text }}>Equity Curve</h3>
@@ -74,7 +74,7 @@ export function EquityCurveChart() {
             tick={{ fill: c.subText, fontSize: 12 }}
             tickLine={false}
             axisLine={false}
-            tickFormatter={(value) => `€${(value / 1000).toFixed(0)}k`}
+            tickFormatter={(value) => `$${(value / 1000).toFixed(0)}k`}
           />
           <Tooltip
             contentStyle={{
@@ -85,7 +85,7 @@ export function EquityCurveChart() {
             }}
             labelStyle={{ color: c.subText, fontSize: '12px' }}
             itemStyle={{ color: c.accent, fontSize: '14px' }}
-            formatter={(value: number) => [`€${value.toFixed(2)}`, 'Equity']}
+            formatter={(value: number) => [`$${value.toFixed(2)}`, 'Equity']}
           />
           <Area
             type="monotone"

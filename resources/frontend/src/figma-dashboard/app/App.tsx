@@ -77,18 +77,18 @@ function Dashboard() {
             <div className="dashboard-row-4">
               <StatCard
                 title="Account Equity"
-                value="€104,500.20"
-                subtitle="Initial: €100,000"
+                value="$104,500.20"
+                subtitle="Initial: $100,000"
               />
               <StatCard
                 title="Daily Loss Remaining"
-                value="€2,450.00"
+                value="$2,450.00"
                 subtitle="5% Max Daily"
                 dangerBar={{ percentage: 51 }}
               />
               <StatCard
                 title="Profit Target Progress"
-                value="€4,500 / €10,000"
+                value="$4,500 / $10,000"
                 subtitle="45% Complete"
                 progressBar={{
                   value: 4500,
