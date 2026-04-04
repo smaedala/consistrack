@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
@@ -14,22 +15,61 @@ import { TradingCalendar } from './components/TradingCalendar';
 
 function Dashboard() {
   const { theme } = useTheme();
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isDesktopSidebarExpanded, setIsDesktopSidebarExpanded] = useState(true);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
 
   const bgColor = theme === 'dark' ? '#101217' : '#F3F4F6';
 
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  const handleMenuClick = () => {
+    const onMobile = window.matchMedia('(max-width: 767px)').matches;
+    if (onMobile) {
+      setIsMobileSidebarOpen((prev) => !prev);
+      return;
+    }
+    setIsDesktopSidebarExpanded((prev) => !prev);
+  };
+
   return (
     <div className="flex h-screen overflow-hidden" style={{ backgroundColor: bgColor }}>
-      {/* Sidebar */}
-      <Sidebar />
+      {/* Desktop Sidebar (unchanged look) */}
+      {!isMobile ? (
+        <Sidebar expanded={isDesktopSidebarExpanded} />
+      ) : null}
+
+      {/* Mobile Sidebar Drawer */}
+      {isMobile ? (
+        <div
+          className={`fixed inset-y-0 left-0 z-50 transition-transform duration-300 ${isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        >
+          <Sidebar variant="mobile" onNavigateMobile={() => setIsMobileSidebarOpen(false)} />
+        </div>
+      ) : null}
+
+      {/* Mobile Overlay */}
+      {isMobile && isMobileSidebarOpen ? (
+        <button
+          type="button"
+          className="fixed inset-0 z-40 bg-black/50"
+          onClick={() => setIsMobileSidebarOpen(false)}
+          aria-label="Close sidebar"
+        />
+      ) : null}
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
-        <Header />
+        <Header isMobile={isMobile} onMobileMenuClick={handleMenuClick} />
 
         {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto">
-          <div className="p-8 space-y-6">
+          <div className="space-y-6" style={{ padding: isMobile ? '16px' : '32px' }}>
             {/* Filters Section */}
             <FilterBar />
 
@@ -96,10 +136,10 @@ function Dashboard() {
 
             {/* Calendar and Trades Row */}
             <div className="dashboard-row-2-1">
-              <div>
+              <div className="recent-trades-slot">
                 <RecentTrades />
               </div>
-              <div>
+              <div className="calendar-slot">
                 <TradingCalendar />
               </div>
             </div>

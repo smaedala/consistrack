@@ -72,7 +72,7 @@ export function TradingCalendar() {
 
   return (
     <div
-      className="rounded-lg p-6 border"
+      className="rounded-lg p-4 sm:p-6 border w-full min-w-0"
       style={{ backgroundColor: c.bg, borderColor: c.border }}
     >
       <div className="flex items-center justify-between mb-4">
@@ -81,20 +81,20 @@ export function TradingCalendar() {
       </div>
 
       {/* Week day headers */}
-      <div className="grid grid-cols-7 gap-2 mb-2">
+      <div className="grid grid-cols-7 gap-1 sm:gap-2 mb-2">
         {weekDays.map((day) => (
-          <div key={day} className="text-center text-xs py-1" style={{ color: c.subText }}>
+          <div key={day} className="text-center text-[10px] sm:text-xs py-1" style={{ color: c.subText }}>
             {day}
           </div>
         ))}
       </div>
 
       {/* Calendar grid */}
-      <div className="grid grid-cols-7 gap-2">
+      <div className="grid grid-cols-7 gap-1 sm:gap-2">
         {calendarDays.map((dayData, index) => (
           <div
             key={index}
-            className="aspect-square rounded-lg p-2 flex flex-col items-center justify-center transition-all cursor-pointer relative group"
+            className="aspect-square rounded-lg p-1 sm:p-2 flex flex-col items-center justify-center transition-all cursor-pointer relative group min-w-0"
             style={{
               backgroundColor: dayData.isCurrentMonth ? getPnlColor(dayData.pnl) : c.inactiveDay,
               opacity: dayData.isCurrentMonth ? 1 : 0.3,
@@ -111,14 +111,14 @@ export function TradingCalendar() {
             }}
           >
             <span
-              className="text-xs font-medium"
+              className="text-[10px] sm:text-xs font-medium"
               style={{ color: dayData.pnl !== 0 ? '#FFFFFF' : c.text }}
             >
               {dayData.day}
             </span>
             {dayData.trades > 0 && (
               <span
-                className="text-[10px] mt-0.5"
+                className="text-[9px] sm:text-[10px] mt-0.5"
                 style={{ color: '#FFFFFF', opacity: 0.8 }}
               >
                 {dayData.trades}

@@ -51,8 +51,8 @@ export function StatCard({ title, value, subtitle, progressBar, statusIndicator,
         <h3 className="text-sm" style={{ color: c.subText }}>{title}</h3>
 
         {/* Main Value */}
-        <div className="flex items-baseline gap-2">
-          <span className="text-3xl font-semibold" style={{ color: c.text }}>{value}</span>
+        <div className="flex items-baseline gap-2 min-w-0">
+          <span className="text-2xl sm:text-3xl font-semibold leading-tight break-words" style={{ color: c.text }}>{value}</span>
           {statusIndicator && (
             <div className="flex items-center gap-1.5">
               <span

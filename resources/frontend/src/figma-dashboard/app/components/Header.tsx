@@ -1,7 +1,12 @@
-import { ChevronDown, Bell, Sun, Moon } from 'lucide-react';
+import { ChevronDown, Bell, Sun, Moon, Menu } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 
-export function Header() {
+interface HeaderProps {
+  isMobile?: boolean;
+  onMobileMenuClick?: () => void;
+}
+
+export function Header({ isMobile = false, onMobileMenuClick }: HeaderProps) {
   const { theme, toggleTheme } = useTheme();
 
   const colors = {
@@ -27,26 +32,37 @@ export function Header() {
 
   return (
     <div 
-      className="h-16 border-b flex items-center justify-between px-8"
-      style={{ backgroundColor: c.bg, borderColor: c.border }}
+      className="h-16 border-b flex items-center justify-between"
+      style={{ backgroundColor: c.bg, borderColor: c.border, padding: isMobile ? '0 16px' : '0 32px' }}
     >
       {/* Welcome Message */}
-      <div>
+      <div className="flex items-center gap-3 min-w-0">
+        <button
+          type="button"
+          className="w-10 h-10 rounded-lg flex items-center justify-center"
+          style={{ backgroundColor: c.cardBg }}
+          onClick={onMobileMenuClick}
+          aria-label="Open menu"
+        >
+          <Menu className="w-5 h-5" style={{ color: c.subText }} />
+        </button>
         <h1 className="text-xl" style={{ color: c.text }}>Welcome back, Alex</h1>
       </div>
 
       {/* Right Side: Account Selector, Theme Toggle & Notifications */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2" style={{ columnGap: isMobile ? '8px' : '16px' }}>
         {/* Account Selector */}
-        <button 
-          className="flex items-center gap-2 transition-colors px-4 py-2 rounded-lg"
-          style={{ backgroundColor: c.cardBg }}
-          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = c.cardHover}
-          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = c.cardBg}
-        >
-          <span className="text-sm" style={{ color: c.text }}>FTMO 100k - Active</span>
-          <ChevronDown className="w-4 h-4" style={{ color: c.subText }} />
-        </button>
+        {!isMobile ? (
+          <button 
+            className="flex items-center gap-2 transition-colors px-4 py-2 rounded-lg"
+            style={{ backgroundColor: c.cardBg }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = c.cardHover}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = c.cardBg}
+          >
+            <span className="text-sm" style={{ color: c.text }}>FTMO 100k - Active</span>
+            <ChevronDown className="w-4 h-4" style={{ color: c.subText }} />
+          </button>
+        ) : null}
 
         {/* Theme Toggle */}
         <button 

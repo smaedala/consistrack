@@ -58,7 +58,7 @@ export function TradingMetrics() {
   const iconColor = theme === 'dark' ? '#00F2FE' : '#0EA5E9';
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="dashboard-metrics-row">
       <MetricCard
         icon={<Trophy size={20} style={{ color: iconColor }} />}
         label="Win Rate"

@@ -1,4 +1,4 @@
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useTheme } from '../context/ThemeContext';
 
 const data = [
@@ -30,6 +30,15 @@ export function WinLossDistribution() {
   };
 
   const c = colors[theme];
+  const totalWins = data.reduce((sum, day) => sum + day.wins, 0);
+  const totalLosses = data.reduce((sum, day) => sum + day.losses, 0);
+  const total = Math.max(totalWins + totalLosses, 1);
+  const winPercent = Math.round((totalWins / total) * 100);
+  const lossPercent = 100 - winPercent;
+  const pieData = [
+    { name: 'Wins', value: totalWins, color: '#10B981' },
+    { name: 'Losses', value: totalLosses, color: '#EF4444' },
+  ];
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
@@ -53,21 +62,70 @@ export function WinLossDistribution() {
 
   return (
     <div
-      className="rounded-lg p-6 border"
+      className="rounded-lg p-4 sm:p-6 border dashboard-equal-height-card h-full flex flex-col winloss-card"
       style={{ backgroundColor: c.bg, borderColor: c.border }}
     >
       <h3 className="text-lg mb-4" style={{ color: c.text }}>Win/Loss Distribution</h3>
 
-      <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={data}>
-          <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
-          <XAxis dataKey="name" stroke={c.subText} style={{ fontSize: '12px' }} />
-          <YAxis stroke={c.subText} style={{ fontSize: '12px' }} />
-          <Tooltip content={<CustomTooltip />} cursor={{ fill: c.grid, opacity: 0.3 }} />
-          <Bar dataKey="wins" fill="#10B981" radius={[4, 4, 0, 0]} />
-          <Bar dataKey="losses" fill="#EF4444" radius={[4, 4, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
+      <div className="flex-1 min-h-0 grid grid-rows-[1fr_1fr] gap-4 winloss-card-grid">
+        <div className="min-h-0">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={data}>
+              <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
+              <XAxis dataKey="name" stroke={c.subText} style={{ fontSize: '12px' }} />
+              <YAxis stroke={c.subText} style={{ fontSize: '12px' }} />
+              <Tooltip content={<CustomTooltip />} cursor={{ fill: c.grid, opacity: 0.3 }} />
+              <Bar dataKey="wins" fill="#10B981" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="losses" fill="#EF4444" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div
+          className="pt-4 border-t min-h-0 flex flex-col winloss-card-donut-section"
+          style={{ borderColor: c.border }}
+        >
+          <div className="flex items-center justify-center gap-4 mb-2 winloss-card-badges">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full" style={{ backgroundColor: 'rgba(16,185,129,0.14)' }}>
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#10B981' }}></span>
+            <span className="text-xs font-semibold" style={{ color: '#10B981' }}>WIN {winPercent}%</span>
+          </div>
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full" style={{ backgroundColor: 'rgba(239,68,68,0.14)' }}>
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#EF4444' }}></span>
+            <span className="text-xs font-semibold" style={{ color: '#EF4444' }}>LOSS {lossPercent}%</span>
+          </div>
+          </div>
+
+          <div className="flex-1 min-h-0 flex items-center justify-center">
+            <div className="relative w-full h-full max-w-[280px] winloss-card-donut-wrap">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    dataKey="value"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={56}
+                    outerRadius={82}
+                    startAngle={90}
+                    endAngle={-270}
+                    paddingAngle={0}
+                    stroke="none"
+                  >
+                    {pieData.map((entry) => (
+                      <Cell key={entry.name} fill={entry.color} />
+                    ))}
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <span className="text-2xl sm:text-3xl font-semibold" style={{ color: c.text }}>{winPercent}%</span>
+                <span className="text-xs" style={{ color: c.subText }}>Win Rate</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

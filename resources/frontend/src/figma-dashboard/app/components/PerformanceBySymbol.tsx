@@ -42,7 +42,7 @@ export function PerformanceBySymbol() {
 
   return (
     <div
-      className="rounded-lg p-6 border"
+      className="rounded-lg p-6 border dashboard-equal-height-card"
       style={{ backgroundColor: c.bg, borderColor: c.border }}
     >
       <h3 className="text-lg mb-4" style={{ color: c.text }}>Performance by Symbol</h3>

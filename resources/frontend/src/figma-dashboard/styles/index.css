@@ -18,12 +18,23 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1.5rem;
+  align-items: stretch;
 }
 
 .dashboard-row-2-1 {
   display: grid;
   grid-template-columns: 2fr 1fr;
   gap: 1.5rem;
+}
+
+.dashboard-metrics-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.dashboard-row-2-1 > div {
+  min-width: 0;
 }
 
 @media (max-width: 1279px) {
@@ -36,10 +47,51 @@
   .dashboard-row-2-1 {
     grid-template-columns: 1fr;
   }
+
+  .dashboard-metrics-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-row-2-1 .calendar-slot {
+    order: 1;
+  }
+
+  .dashboard-row-2-1 .recent-trades-slot {
+    order: 2;
+  }
 }
 
 @media (max-width: 767px) {
   .dashboard-row-4 {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-metrics-row {
+    grid-template-columns: 1fr;
+  }
+
+  .winloss-card-grid {
+    grid-template-rows: 220px auto !important;
+    gap: 0.75rem !important;
+  }
+
+  .winloss-card-donut-section {
+    min-height: 220px;
+  }
+
+  .winloss-card-badges {
+    flex-wrap: wrap;
+    gap: 0.5rem !important;
+  }
+
+  .winloss-card-donut-wrap {
+    max-width: 250px;
+  }
+}
+
+@media (min-width: 1280px) {
+  .dashboard-equal-height-card {
+    min-height: 640px;
+    height: 100%;
   }
 }

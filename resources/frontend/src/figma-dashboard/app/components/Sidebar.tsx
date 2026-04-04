@@ -4,10 +4,38 @@ import axios from 'axios';
 import { LayoutDashboard, FileText, BarChart3, Settings, User, LogOut } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 
-export function Sidebar() {
+interface SidebarProps {
+  variant?: 'desktop' | 'mobile';
+  expanded?: boolean;
+  onNavigateMobile?: () => void;
+}
+
+function SidebarLogo({ showText }: { showText: boolean }) {
+  return (
+    <div
+      className="authv2-logo"
+      style={{
+        justifyContent: showText ? 'flex-start' : 'center',
+        width: '100%',
+        fontSize: showText ? '1.1rem' : '1rem',
+        gap: showText ? '10px' : '0',
+      }}
+    >
+      <div className="authv2-logo-icon" aria-hidden="true" style={{ width: '30px', height: '30px', borderRadius: '8px' }}>
+        <svg viewBox="0 0 24 24">
+          <path d="M4 18h16v2H2V4h2v14Zm4-3 3.5-3.5 2.8 2.8L20 8.6V12h2V5h-7v2h3.6l-4.3 4.3-2.8-2.8L6 13.6 8 15Z" />
+        </svg>
+      </div>
+      {showText ? <span style={{ letterSpacing: '-0.01em' }}>ConsisTracker</span> : null}
+    </div>
+  );
+}
+
+export function Sidebar({ variant = 'desktop', expanded = false, onNavigateMobile }: SidebarProps) {
   const navigate = useNavigate();
   const { theme } = useTheme();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const isMobile = variant === 'mobile';
   
   const navItems = [
     { icon: LayoutDashboard, label: 'Dashboard', active: true, onClick: () => navigate('/dashboard') },
@@ -36,18 +64,24 @@ export function Sidebar() {
   };
 
   const c = colors[theme];
+  const showLabels = isMobile || expanded;
 
   return (
     <div 
-      className="w-16 border-r flex flex-col items-center py-6"
+      className={`h-full border-r flex flex-col py-6 transition-all duration-300 ${isMobile ? 'w-64 px-3' : showLabels ? 'w-56 px-3' : 'w-16 items-center'}`}
       style={{ backgroundColor: c.bg, borderColor: c.border }}
     >
+      {/* Logo */}
+      <div className={`${showLabels ? 'px-1 mb-6' : 'mb-6'}`} style={{ width: '100%' }}>
+        <SidebarLogo showText={showLabels} />
+      </div>
+
       {/* Navigation Items */}
-      <div className="flex-1 flex flex-col gap-4">
+      <div className={`flex-1 flex flex-col gap-4 ${showLabels ? '' : 'items-center'}`}>
         {navItems.map((item) => (
           <button
             key={item.label}
-            className="w-10 h-10 rounded-lg flex items-center justify-center transition-colors"
+            className={`rounded-lg flex items-center transition-colors ${showLabels ? 'w-full h-11 px-3 justify-start gap-3' : 'w-10 h-10 justify-center'}`}
             style={{
               backgroundColor: item.active ? `${c.activeBg}10` : 'transparent',
               color: item.active ? c.activeText : c.text,
@@ -64,10 +98,14 @@ export function Sidebar() {
                 e.currentTarget.style.color = c.text;
               }
             }}
-            onClick={item.onClick}
+            onClick={() => {
+              item.onClick();
+              onNavigateMobile?.();
+            }}
             title={item.label}
           >
             <item.icon className="w-5 h-5" />
+            {showLabels ? <span className="text-sm">{item.label}</span> : null}
           </button>
         ))}
       </div>
@@ -75,7 +113,7 @@ export function Sidebar() {
       {/* User Profile at Bottom */}
       <div className="relative">
         <button
-          className="w-10 h-10 rounded-lg flex items-center justify-center transition-colors"
+          className={`rounded-lg flex items-center transition-colors ${showLabels ? 'w-full h-11 px-3 justify-start gap-3' : 'w-10 h-10 justify-center'}`}
           style={{ color: c.text, backgroundColor: isProfileOpen ? c.hover : 'transparent' }}
           onMouseEnter={(e) => {
             e.currentTarget.style.backgroundColor = c.hover;
@@ -91,11 +129,12 @@ export function Sidebar() {
           title="User Profile"
         >
           <User className="w-5 h-5" />
+          {showLabels ? <span className="text-sm">Profile</span> : null}
         </button>
 
         {isProfileOpen ? (
           <div
-            className="absolute bottom-0 left-12 w-36 rounded-xl border p-2 shadow-2xl z-50"
+            className={`absolute bottom-0 w-36 rounded-xl border p-2 shadow-2xl z-50 ${showLabels ? 'right-0' : 'left-12'}`}
             style={{
               backgroundColor: theme === 'dark' ? '#111622' : '#FFFFFF',
               borderColor: c.border,
@@ -109,6 +148,7 @@ export function Sidebar() {
               onClick={() => {
                 setIsProfileOpen(false);
                 navigate('/risk-settings');
+                onNavigateMobile?.();
               }}
             >
               Settings
@@ -123,6 +163,7 @@ export function Sidebar() {
                 localStorage.removeItem('api_token');
                 delete axios.defaults.headers.common.Authorization;
                 navigate('/login');
+                onNavigateMobile?.();
               }}
             >
               <LogOut className="w-4 h-4" />
