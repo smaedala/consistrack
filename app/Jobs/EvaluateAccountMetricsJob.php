@@ -4,8 +4,11 @@ namespace App\Jobs;
 
 use App\Models\AccountAlert;
 use App\Models\CachedAccountMetric;
+use App\Models\DailyAccountStat;
 use App\Models\TradingAccount;
 use App\Services\MetricsService;
+use App\Services\TradingDayService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -23,7 +26,7 @@ class EvaluateAccountMetricsJob implements ShouldQueue
         $this->accountId = $accountId;
     }
 
-    public function handle(MetricsService $metricsService)
+    public function handle(MetricsService $metricsService, TradingDayService $tradingDayService)
     {
         $account = TradingAccount::find($this->accountId);
         if (! $account) {
@@ -38,6 +41,20 @@ class EvaluateAccountMetricsJob implements ShouldQueue
             'metrics' => $metrics,
             'computed_at' => now(),
         ]);
+
+        $tradingDay = $tradingDayService->tradingDayKeyNow($account);
+        DB::table('daily_account_stats')->upsert(
+            [[
+                'account_id' => $account->id,
+                'trading_day' => $tradingDay,
+                'metrics' => json_encode($metrics),
+                'computed_at' => now(),
+                'updated_at' => now(),
+                'created_at' => now(),
+            ]],
+            ['account_id', 'trading_day'],
+            ['metrics', 'computed_at', 'updated_at']
+        );
 
         // update account status if breached
         $account->current_balance = $metrics['currentBalance'] ?? $account->current_balance;

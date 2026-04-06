@@ -1,15 +1,17 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useTheme } from '../context/ThemeContext';
 
-const data = [
-  { name: 'Mon', wins: 12, losses: 3 },
-  { name: 'Tue', wins: 8, losses: 5 },
-  { name: 'Wed', wins: 15, losses: 2 },
-  { name: 'Thu', wins: 10, losses: 6 },
-  { name: 'Fri', wins: 14, losses: 4 },
-];
+interface WinLossItem {
+  day: string;
+  wins: number;
+  losses: number;
+}
 
-export function WinLossDistribution() {
+interface WinLossDistributionProps {
+  data?: WinLossItem[];
+}
+
+export function WinLossDistribution({ data = [] }: WinLossDistributionProps) {
   const { theme } = useTheme();
 
   const colors = {
@@ -30,8 +32,9 @@ export function WinLossDistribution() {
   };
 
   const c = colors[theme];
-  const totalWins = data.reduce((sum, day) => sum + day.wins, 0);
-  const totalLosses = data.reduce((sum, day) => sum + day.losses, 0);
+  const rows = data.length > 0 ? data : [{ day: 'Day 1', wins: 0, losses: 0 }];
+  const totalWins = rows.reduce((sum, day) => sum + day.wins, 0);
+  const totalLosses = rows.reduce((sum, day) => sum + day.losses, 0);
   const total = Math.max(totalWins + totalLosses, 1);
   const winPercent = Math.round((totalWins / total) * 100);
   const lossPercent = 100 - winPercent;
@@ -47,7 +50,7 @@ export function WinLossDistribution() {
           className="rounded-lg p-3 border shadow-lg"
           style={{ backgroundColor: c.bg, borderColor: c.border }}
         >
-          <p className="text-sm mb-2" style={{ color: c.text }}>{payload[0].payload.name}</p>
+          <p className="text-sm mb-2" style={{ color: c.text }}>{payload[0].payload.day}</p>
           <p className="text-xs" style={{ color: '#10B981' }}>
             Wins: {payload[0].value}
           </p>
@@ -70,9 +73,9 @@ export function WinLossDistribution() {
       <div className="flex-1 min-h-0 grid grid-rows-[1fr_1fr] gap-4 winloss-card-grid">
         <div className="min-h-0">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={data}>
+            <BarChart data={rows}>
               <CartesianGrid strokeDasharray="3 3" stroke={c.grid} />
-              <XAxis dataKey="name" stroke={c.subText} style={{ fontSize: '12px' }} />
+              <XAxis dataKey="day" stroke={c.subText} style={{ fontSize: '12px' }} />
               <YAxis stroke={c.subText} style={{ fontSize: '12px' }} />
               <Tooltip content={<CustomTooltip />} cursor={{ fill: c.grid, opacity: 0.3 }} />
               <Bar dataKey="wins" fill="#10B981" radius={[4, 4, 0, 0]} />

@@ -3,8 +3,9 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
-use App\Models\TradingAccount;
 use App\Models\CachedAccountMetric;
+use App\Models\DailyAccountStat;
+use App\Models\TradingAccount;
 use App\Services\MetricsService;
 
 class MetricsController extends Controller
@@ -13,7 +14,20 @@ class MetricsController extends Controller
     {
         $this->authorize('view', $account);
 
-        // Try to return the most recent cached metric
+        // Fast path: latest daily snapshot
+        $dailySnapshot = DailyAccountStat::where('account_id', $account->id)
+            ->orderByDesc('trading_day')
+            ->first();
+
+        if ($dailySnapshot) {
+            return response()->json([
+                'success' => true,
+                'data' => $dailySnapshot->metrics,
+                'message' => 'Daily snapshot metrics',
+            ]);
+        }
+
+        // Fallback: most recent cached metric
         $cached = CachedAccountMetric::where('account_id', $account->id)->orderByDesc('computed_at')->first();
 
         if ($cached) {

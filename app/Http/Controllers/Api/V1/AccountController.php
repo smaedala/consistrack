@@ -32,7 +32,9 @@ class AccountController extends Controller
             'consistency_rule_percent' => 'nullable|integer|min:1|max:100',
             'daily_drawdown_limit_percent' => 'nullable|integer|min:1|max:100',
             'max_loss_limit_percent' => 'nullable|integer|min:1|max:100',
-            'timezone' => 'nullable|string',
+            'timezone' => 'nullable|timezone',
+            'trading_day_reset_timezone' => 'nullable|timezone',
+            'trading_day_reset_time' => ['nullable', 'regex:/^([01]\d|2[0-3]):([0-5]\d)$/'],
             'status' => 'nullable|in:active,passed,breached',
         ]);
 
@@ -56,7 +58,9 @@ class AccountController extends Controller
             'consistency_rule_percent' => 'sometimes|integer|min:1|max:100',
             'daily_drawdown_limit_percent' => 'sometimes|integer|min:1|max:100',
             'max_loss_limit_percent' => 'sometimes|integer|min:1|max:100',
-            'timezone' => 'sometimes|string',
+            'timezone' => 'sometimes|timezone',
+            'trading_day_reset_timezone' => 'sometimes|timezone',
+            'trading_day_reset_time' => ['sometimes', 'regex:/^([01]\d|2[0-3]):([0-5]\d)$/'],
             'status' => 'sometimes|in:active,passed,breached',
         ]);
 

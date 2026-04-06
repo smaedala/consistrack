@@ -10,15 +10,11 @@ interface SymbolPerformance {
   avgLoss: number;
 }
 
-const mockData: SymbolPerformance[] = [
-  { symbol: 'EUR/USD', trades: 45, winRate: 68, pnl: 2450.50, avgWin: 125.50, avgLoss: -85.20 },
-  { symbol: 'GBP/USD', trades: 32, winRate: 62, pnl: 1820.30, avgWin: 110.30, avgLoss: -92.10 },
-  { symbol: 'USD/JPY', trades: 28, winRate: 71, pnl: 1650.80, avgWin: 140.20, avgLoss: -78.50 },
-  { symbol: 'AUD/USD', trades: 24, winRate: 58, pnl: 980.40, avgWin: 95.80, avgLoss: -88.60 },
-  { symbol: 'EUR/GBP', trades: 18, winRate: 55, pnl: 425.60, avgWin: 88.40, avgLoss: -95.30 },
-];
+interface PerformanceBySymbolProps {
+  data?: SymbolPerformance[];
+}
 
-export function PerformanceBySymbol() {
+export function PerformanceBySymbol({ data = [] }: PerformanceBySymbolProps) {
   const { theme } = useTheme();
 
   const colors = {
@@ -39,6 +35,7 @@ export function PerformanceBySymbol() {
   };
 
   const c = colors[theme];
+  const rows = data;
 
   return (
     <div
@@ -48,7 +45,7 @@ export function PerformanceBySymbol() {
       <h3 className="text-lg mb-4" style={{ color: c.text }}>Performance by Symbol</h3>
 
       <div className="space-y-4">
-        {mockData.map((item) => (
+        {rows.map((item) => (
           <div
             key={item.symbol}
             className="p-4 rounded-lg border transition-colors"
@@ -111,6 +108,11 @@ export function PerformanceBySymbol() {
             </div>
           </div>
         ))}
+        {rows.length === 0 ? (
+          <div className="p-4 rounded-lg border text-sm" style={{ borderColor: c.border, color: c.subText }}>
+            No symbol performance yet. Add trades to activate this panel.
+          </div>
+        ) : null}
       </div>
     </div>
   );

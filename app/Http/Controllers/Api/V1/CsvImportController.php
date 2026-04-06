@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\TradingAccount;
+use App\Services\ActivityLogService;
 use App\Services\MT4CSVParser;
 use App\Services\TradeImportService;
 use Illuminate\Http\Request;
@@ -23,9 +24,28 @@ class CsvImportController extends Controller
             'parsed_trades' => 'nullable|array',
         ]);
 
+        $hasCsv = $request->hasFile('csv_file');
+        $hasParsed = $request->has('parsed_trades');
+        if (($hasCsv && $hasParsed) || (!$hasCsv && !$hasParsed)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Provide exactly one of csv_file or parsed_trades.',
+            ], 422);
+        }
+
         $resolvedAccountId = $account_id ?: ($validated['account_id'] ?? null);
         if (! $resolvedAccountId) {
-            return response()->json(['message' => 'Account id is required.'], 422);
+            return response()->json([
+                'success' => false,
+                'message' => 'Account id is required.',
+            ], 422);
+        }
+
+        if (isset($validated['account_id']) && (int) $validated['account_id'] !== (int) $resolvedAccountId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'account_id in body must match route account id.',
+            ], 422);
         }
 
         $account = TradingAccount::where('id', $resolvedAccountId)
@@ -39,12 +59,31 @@ class CsvImportController extends Controller
             if ($request->has('parsed_trades')) {
                 $parsed = $request->input('parsed_trades');
                 if (!is_array($parsed) || count($parsed) === 0) {
-                    return response()->json(['message' => 'No trades provided in parsed_trades'], 400);
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'No trades provided in parsed_trades',
+                    ], 400);
                 }
 
-                $result = $tradeImportService->import($parsed, $account);
+                $result = $tradeImportService->import($parsed, $account, 'parsed');
+                app(ActivityLogService::class)->log(
+                    $account,
+                    $user,
+                    'import_completed',
+                    'Parsed trades import completed',
+                    [
+                        'source' => 'parsed',
+                        'batch_uuid' => $result['batch_uuid'] ?? null,
+                        'imported' => $result['imported'] ?? 0,
+                        'duplicates' => $result['duplicates'] ?? 0,
+                    ]
+                );
 
-                return response()->json(['data' => $result, 'message' => 'Parsed trades imported']);
+                return response()->json([
+                    'success' => true,
+                    'data' => $result,
+                    'message' => 'Parsed trades imported',
+                ]);
             }
 
             // Otherwise accept uploaded CSV file
@@ -55,19 +94,46 @@ class CsvImportController extends Controller
 
                 if (empty($parseResult['trades'])) {
                     return response()->json([
+                        'success' => false,
                         'message' => 'No valid trades found in CSV',
                         'errors' => $parseResult['errors'],
                     ], 400);
                 }
 
-                $result = $tradeImportService->import($parseResult['trades'], $account);
+                $result = $tradeImportService->import(
+                    $parseResult['trades'],
+                    $account,
+                    'csv',
+                    $request->file('csv_file')->getClientOriginalName()
+                );
+                app(ActivityLogService::class)->log(
+                    $account,
+                    $user,
+                    'import_completed',
+                    'CSV import completed',
+                    [
+                        'source' => 'csv',
+                        'file_name' => $request->file('csv_file')->getClientOriginalName(),
+                        'batch_uuid' => $result['batch_uuid'] ?? null,
+                        'imported' => $result['imported'] ?? 0,
+                        'duplicates' => $result['duplicates'] ?? 0,
+                    ]
+                );
 
-                return response()->json(['data' => $result, 'message' => 'CSV imported']);
+                return response()->json([
+                    'success' => true,
+                    'data' => $result,
+                    'message' => 'CSV imported',
+                ]);
             }
 
-            return response()->json(['message' => 'No csv_file or parsed_trades provided'], 400);
+            return response()->json([
+                'success' => false,
+                'message' => 'No csv_file or parsed_trades provided',
+            ], 400);
         } catch (\Exception $e) {
             return response()->json([
+                'success' => false,
                 'message' => 'CSV import failed: ' . $e->getMessage(),
             ], 400);
         }

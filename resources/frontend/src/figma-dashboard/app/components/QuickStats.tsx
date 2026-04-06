@@ -54,7 +54,21 @@ function StatItem({ label, value, trend, trendValue }: StatItemProps) {
   );
 }
 
-export function QuickStats() {
+interface QuickStatsData {
+  averageWin: number;
+  averageLoss: number;
+  largestWin: number;
+  largestLoss: number;
+  bestTradingDay: number;
+  consecutiveWins: number;
+  maxDrawdown: number;
+}
+
+interface QuickStatsProps {
+  data?: QuickStatsData;
+}
+
+export function QuickStats({ data }: QuickStatsProps) {
   const { theme } = useTheme();
 
   const colors = {
@@ -71,6 +85,15 @@ export function QuickStats() {
   };
 
   const c = colors[theme];
+  const stats: QuickStatsData = data ?? {
+    averageWin: 0,
+    averageLoss: 0,
+    largestWin: 0,
+    largestLoss: 0,
+    bestTradingDay: 0,
+    consecutiveWins: 0,
+    maxDrawdown: 0,
+  };
 
   return (
     <div
@@ -80,14 +103,13 @@ export function QuickStats() {
       <h3 className="text-lg mb-4" style={{ color: c.text }}>Quick Statistics</h3>
 
       <div className="space-y-1 divide-y" style={{ borderColor: c.border }}>
-        <StatItem label="Average Win" value="$125.40" trend="up" trendValue="+8.2%" />
-        <StatItem label="Average Loss" value="$88.20" trend="down" trendValue="-3.1%" />
-        <StatItem label="Largest Win" value="$680.00" trend="up" trendValue="EUR/USD" />
-        <StatItem label="Largest Loss" value="$120.50" trend="down" trendValue="GBP/USD" />
-        <StatItem label="Avg Trade Duration" value="4.2 hours" trend="neutral" />
-        <StatItem label="Best Trading Day" value="$1,245.80" trend="up" trendValue="Monday" />
-        <StatItem label="Consecutive Wins" value="8 trades" trend="up" />
-        <StatItem label="Max Drawdown" value="$850.00" trend="down" trendValue="-0.85%" />
+        <StatItem label="Average Win" value={`$${stats.averageWin.toFixed(2)}`} trend={stats.averageWin > 0 ? 'up' : 'neutral'} />
+        <StatItem label="Average Loss" value={`$${Math.abs(stats.averageLoss).toFixed(2)}`} trend={stats.averageLoss < 0 ? 'down' : 'neutral'} />
+        <StatItem label="Largest Win" value={`$${stats.largestWin.toFixed(2)}`} trend={stats.largestWin > 0 ? 'up' : 'neutral'} />
+        <StatItem label="Largest Loss" value={`$${Math.abs(stats.largestLoss).toFixed(2)}`} trend={stats.largestLoss < 0 ? 'down' : 'neutral'} />
+        <StatItem label="Best Trading Day" value={`$${stats.bestTradingDay.toFixed(2)}`} trend={stats.bestTradingDay > 0 ? 'up' : 'neutral'} />
+        <StatItem label="Consecutive Wins" value={`${stats.consecutiveWins} trades`} trend={stats.consecutiveWins > 0 ? 'up' : 'neutral'} />
+        <StatItem label="Max Drawdown" value={`$${stats.maxDrawdown.toFixed(2)}`} trend={stats.maxDrawdown > 0 ? 'down' : 'neutral'} />
       </div>
     </div>
   );

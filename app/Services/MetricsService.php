@@ -4,11 +4,16 @@ namespace App\Services;
 
 use App\Models\TradingAccount;
 use App\Models\Trade;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Collection;
 
 class MetricsService
 {
+    public function __construct(
+        protected ?TradingDayService $tradingDayService = null
+    ) {
+        $this->tradingDayService = $this->tradingDayService ?: new TradingDayService();
+    }
+
     /**
      * Evaluate account metrics and return an array of computed values.
      */
@@ -18,51 +23,49 @@ class MetricsService
         $consistencyRulePercent = (float) ($account->consistency_rule_percent ?? 40);
         $dailyDrawdownLimitPercent = (float) ($account->daily_drawdown_limit_percent ?? 5);
 
-        // Fetch daily sums grouped by date (UTC or account timezone)
-        $timezone = $account->timezone ?? 'UTC';
+        $trades = Trade::where('account_id', $account->id)
+            ->orderBy('close_time')
+            ->get();
 
-        $daily = Trade::where('account_id', $account->id)
-            ->get()
-            ->groupBy(function (Trade $t) use ($timezone) {
-                return $t->close_time->setTimezone($timezone)->toDateString();
-            })
-            ->map(fn($group) => collect($group)->sum(fn($t) => (float) $t->pnl))
+        $dailyTradeGroups = $trades
+            ->groupBy(fn(Trade $t) => $this->tradingDayService->tradingDayKeyForTimestamp($account, $t->close_time))
             ->sortKeys();
 
-        $topDailyProfit = $daily->max() ?? 0.0;
+        $dailyPnL = $dailyTradeGroups
+            ->map(fn(Collection $group) => (float) $group->sum(fn(Trade $trade) => (float) $trade->pnl));
+
+        $topDailyProfit = max(0.0, (float) ($dailyPnL->max() ?? 0.0));
         $topDailyPercentOfTarget = $profitTarget > 0 ? ($topDailyProfit / $profitTarget) * 100 : 0.0;
 
         // max loss percent relative to initial balance
         $initial = (float) $account->initial_balance;
-        $totalPnL = (float) Trade::where('account_id', $account->id)->sum('pnl');
+        $totalPnL = (float) $trades->sum(fn(Trade $trade) => (float) $trade->pnl);
         $current = $initial + $totalPnL;
         $maxLossPercent = $initial > 0 ? max(0, (($initial - $current) / $initial) * 100) : 0.0;
 
-        // Simple daily drawdown: compute per-day peak-trough based on cumulative PnL
+        // Daily drawdown by trading-day windows (firm reset-aware).
         $dailyDrawdownPercent = 0.0;
-        foreach ($daily as $date => $pnl) {
-            // Reconstruct intraday cumulative series from trades ordered by close_time
-            $trades = Trade::where('account_id', $account->id)
-                ->whereDate('close_time', $date)
-                ->orderBy('close_time')
-                ->get();
+        $runningBalance = $initial;
 
-            if ($trades->isEmpty()) {
+        foreach ($dailyTradeGroups as $dayTrades) {
+            if ($dayTrades->isEmpty()) {
                 continue;
             }
 
-            $startingBalance = $this->startingBalanceForDay($account, $date);
+            $startingBalance = $runningBalance;
             $cumulative = $startingBalance;
             $peak = $cumulative;
-            $trough = $cumulative;
-            foreach ($trades as $t) {
+            $maxIntradayDrop = 0.0;
+            foreach ($dayTrades as $t) {
                 $cumulative += (float) $t->pnl;
                 $peak = max($peak, $cumulative);
-                $trough = min($trough, $cumulative);
+                $maxIntradayDrop = max($maxIntradayDrop, $peak - $cumulative);
             }
 
+            $runningBalance = $cumulative;
+
             if ($startingBalance > 0) {
-                $dd = ($peak - $trough) / $startingBalance * 100;
+                $dd = ($maxIntradayDrop / $startingBalance) * 100;
                 $dailyDrawdownPercent = max($dailyDrawdownPercent, $dd);
             }
         }
@@ -93,15 +96,5 @@ class MetricsService
             'consistencyRiskPercentOfLimit' => round($consistencyRisk, 2),
             'status' => $status,
         ];
-    }
-
-    protected function startingBalanceForDay(TradingAccount $account, string $date): float
-    {
-        // Find last balance before this day (simple approach): initial_balance + sum of pnl before date
-        $before = Trade::where('account_id', $account->id)
-            ->whereDate('close_time', '<', $date)
-            ->sum('pnl');
-
-        return (float) $account->initial_balance + (float) $before;
     }
 }

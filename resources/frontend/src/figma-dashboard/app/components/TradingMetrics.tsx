@@ -9,6 +9,15 @@ interface MetricCardProps {
   isPositive?: boolean;
 }
 
+interface TradingMetricsProps {
+  data?: {
+    winRate: number;
+    riskReward: number;
+    profitFactor: number;
+    totalTrades: number;
+  };
+}
+
 function MetricCard({ icon, label, value, change, isPositive }: MetricCardProps) {
   const { theme } = useTheme();
 
@@ -53,38 +62,38 @@ function MetricCard({ icon, label, value, change, isPositive }: MetricCardProps)
   );
 }
 
-export function TradingMetrics() {
+export function TradingMetrics({ data }: TradingMetricsProps) {
   const { theme } = useTheme();
   const iconColor = theme === 'dark' ? '#00F2FE' : '#0EA5E9';
+  const winRate = Number.isFinite(data?.winRate) ? data!.winRate : 0;
+  const riskReward = Number.isFinite(data?.riskReward) ? data!.riskReward : 0;
+  const profitFactor = Number.isFinite(data?.profitFactor) ? data!.profitFactor : 0;
+  const totalTrades = Number.isFinite(data?.totalTrades) ? data!.totalTrades : 0;
 
   return (
     <div className="dashboard-metrics-row">
       <MetricCard
         icon={<Trophy size={20} style={{ color: iconColor }} />}
         label="Win Rate"
-        value="64.5%"
-        change="+2.3%"
+        value={`${winRate.toFixed(1)}%`}
         isPositive={true}
       />
       <MetricCard
         icon={<Target size={20} style={{ color: iconColor }} />}
         label="Risk/Reward Ratio"
-        value="1:2.4"
-        change="+0.2"
+        value={`1:${riskReward.toFixed(2)}`}
         isPositive={true}
       />
       <MetricCard
         icon={<TrendingUp size={20} style={{ color: iconColor }} />}
         label="Profit Factor"
-        value="2.18"
-        change="+0.15"
+        value={profitFactor.toFixed(2)}
         isPositive={true}
       />
       <MetricCard
         icon={<Activity size={20} style={{ color: iconColor }} />}
         label="Total Trades"
-        value="147"
-        change="+12"
+        value={String(totalTrades)}
         isPositive={true}
       />
     </div>

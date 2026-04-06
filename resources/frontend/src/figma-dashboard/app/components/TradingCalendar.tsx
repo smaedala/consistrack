@@ -7,7 +7,7 @@ interface CalendarDay {
   isCurrentMonth: boolean;
 }
 
-const generateCalendarData = (): CalendarDay[] => {
+const generateCalendarData = (empty = false): CalendarDay[] => {
   const days: CalendarDay[] = [];
 
   // Previous month days
@@ -16,7 +16,9 @@ const generateCalendarData = (): CalendarDay[] => {
   }
 
   // Current month days with mock data
-  const mockPnl = [450, -120, 680, 215, -95, 340, 185, 520, 280, -75,
+  const mockPnl = empty
+    ? new Array(30).fill(0)
+    : [450, -120, 680, 215, -95, 340, 185, 520, 280, -75,
                    410, 195, -165, 525, 310, 445, -88, 390, 265, 510,
                    -145, 375, 420, 485, -92, 355, 490, 0, 0, 0];
 
@@ -33,9 +35,13 @@ const generateCalendarData = (): CalendarDay[] => {
   return days;
 };
 
-export function TradingCalendar() {
+interface TradingCalendarProps {
+  empty?: boolean;
+}
+
+export function TradingCalendar({ empty = false }: TradingCalendarProps) {
   const { theme } = useTheme();
-  const calendarDays = generateCalendarData();
+  const calendarDays = generateCalendarData(empty);
 
   const colors = {
     dark: {

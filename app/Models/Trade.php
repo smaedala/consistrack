@@ -11,6 +11,7 @@ class Trade extends Model
 
     protected $fillable = [
         'account_id',
+        'import_batch_id',
         'symbol',
         'type',
         'lot_size',
@@ -30,5 +31,10 @@ class Trade extends Model
     public function account()
     {
         return $this->belongsTo(TradingAccount::class, 'account_id');
+    }
+
+    public function importBatch()
+    {
+        return $this->belongsTo(TradeImportBatch::class, 'import_batch_id');
     }
 }

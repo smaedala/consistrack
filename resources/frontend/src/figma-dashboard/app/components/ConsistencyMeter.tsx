@@ -3,11 +3,12 @@ import { useTheme } from '../context/ThemeContext';
 
 interface ConsistencyMeterProps {
   percentage: number;
+  threshold?: number;
 }
 
-export function ConsistencyMeter({ percentage }: ConsistencyMeterProps) {
+export function ConsistencyMeter({ percentage, threshold = 40 }: ConsistencyMeterProps) {
   const { theme } = useTheme();
-  const dangerThreshold = 40;
+  const dangerThreshold = threshold;
   const isSafe = percentage < dangerThreshold;
 
   const data = [
@@ -50,7 +51,7 @@ export function ConsistencyMeter({ percentage }: ConsistencyMeterProps) {
         Consistency Meter
       </h3>
       <p className="text-sm mb-6" style={{ color: c.subText }}>
-        Max Day vs Total Profit (40% Rule)
+        Max Day vs Total Profit ({dangerThreshold}% Rule)
       </p>
 
       <div className="relative flex items-center justify-center">
@@ -113,7 +114,7 @@ export function ConsistencyMeter({ percentage }: ConsistencyMeterProps) {
             Danger Threshold
           </span>
           <span className="text-sm font-medium" style={{ color: '#EF4444' }}>
-            40%
+            {dangerThreshold}%
           </span>
         </div>
       </div>

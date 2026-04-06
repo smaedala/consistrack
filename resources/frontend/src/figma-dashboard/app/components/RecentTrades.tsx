@@ -1,45 +1,33 @@
 import { useEffect, useMemo, useState } from 'react';
+import axios from 'axios';
 import { Search, Filter, X } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 
-interface Trade {
-  id: string;
+interface ApiTrade {
+  id: number;
   symbol: string;
-  type: 'BUY' | 'SELL';
-  lotSize: number;
+  type: 'buy' | 'sell';
+  lot_size: number;
   pnl: number;
 }
 
-const mockTrades: Trade[] = [
-  { id: '1', symbol: 'EUR/USD', type: 'BUY', lotSize: 0.5, pnl: 450.25 },
-  { id: '2', symbol: 'GBP/USD', type: 'SELL', lotSize: 0.3, pnl: -120.50 },
-  { id: '3', symbol: 'USD/JPY', type: 'BUY', lotSize: 1.0, pnl: 680.00 },
-  { id: '4', symbol: 'AUD/USD', type: 'SELL', lotSize: 0.2, pnl: 215.75 },
-  { id: '5', symbol: 'EUR/GBP', type: 'BUY', lotSize: 0.4, pnl: -95.30 },
-  { id: '6', symbol: 'USD/CHF', type: 'BUY', lotSize: 0.6, pnl: 340.60 },
-  { id: '7', symbol: 'NZD/USD', type: 'SELL', lotSize: 0.3, pnl: 185.20 },
-  { id: '8', symbol: 'EUR/JPY', type: 'BUY', lotSize: 0.5, pnl: 520.40 },
-  { id: '9', symbol: 'CAD/JPY', type: 'SELL', lotSize: 0.2, pnl: -64.30 },
-  { id: '10', symbol: 'XAU/USD', type: 'BUY', lotSize: 0.1, pnl: 712.55 },
-  { id: '11', symbol: 'US30', type: 'SELL', lotSize: 0.4, pnl: -210.10 },
-  { id: '12', symbol: 'NAS100', type: 'BUY', lotSize: 0.3, pnl: 302.00 },
-  { id: '13', symbol: 'EUR/USD', type: 'SELL', lotSize: 0.6, pnl: -48.00 },
-  { id: '14', symbol: 'GBP/JPY', type: 'BUY', lotSize: 0.2, pnl: 156.45 },
-  { id: '15', symbol: 'AUD/JPY', type: 'SELL', lotSize: 0.5, pnl: -92.75 },
-  { id: '16', symbol: 'USD/CAD', type: 'BUY', lotSize: 0.7, pnl: 265.30 },
-  { id: '17', symbol: 'EUR/AUD', type: 'BUY', lotSize: 0.2, pnl: 74.60 },
-  { id: '18', symbol: 'GBP/USD', type: 'BUY', lotSize: 0.9, pnl: 428.90 },
-  { id: '19', symbol: 'USD/JPY', type: 'SELL', lotSize: 0.4, pnl: -130.20 },
-  { id: '20', symbol: 'XAG/USD', type: 'BUY', lotSize: 0.3, pnl: 191.15 },
-];
+interface RecentTradesProps {
+  accountId: number | null;
+  refreshKey?: number;
+}
 
-export function RecentTrades() {
+export function RecentTrades({ accountId, refreshKey = 0 }: RecentTradesProps) {
   const { theme } = useTheme();
   const [query, setQuery] = useState('');
   const [symbolFilter, setSymbolFilter] = useState('All Symbols');
   const [typeFilter, setTypeFilter] = useState<'ALL' | 'BUY' | 'SELL'>('ALL');
   const [pnlFilter, setPnlFilter] = useState<'ALL' | 'POSITIVE' | 'NEGATIVE'>('ALL');
   const [currentPage, setCurrentPage] = useState(1);
+  const [trades, setTrades] = useState<ApiTrade[]>([]);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalTrades, setTotalTrades] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const PAGE_SIZE = 8;
 
   const colors = {
@@ -60,51 +48,67 @@ export function RecentTrades() {
   };
 
   const c = colors[theme];
+
   const symbols = useMemo(
-    () => ['All Symbols', ...Array.from(new Set(mockTrades.map((trade) => trade.symbol)))],
-    []
+    () => ['All Symbols', ...Array.from(new Set(trades.map((trade) => trade.symbol)))],
+    [trades]
   );
-
-  const filteredTrades = useMemo(() => {
-    return mockTrades.filter((trade) => {
-      const q = query.trim().toLowerCase();
-      const queryMatch =
-        q.length === 0 ||
-        trade.symbol.toLowerCase().includes(q) ||
-        trade.type.toLowerCase().includes(q);
-
-      const symbolMatch = symbolFilter === 'All Symbols' || trade.symbol === symbolFilter;
-      const typeMatch = typeFilter === 'ALL' || trade.type === typeFilter;
-      const pnlMatch =
-        pnlFilter === 'ALL' ||
-        (pnlFilter === 'POSITIVE' && trade.pnl >= 0) ||
-        (pnlFilter === 'NEGATIVE' && trade.pnl < 0);
-
-      return queryMatch && symbolMatch && typeMatch && pnlMatch;
-    });
-  }, [query, symbolFilter, typeFilter, pnlFilter]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredTrades.length / PAGE_SIZE));
-  const paginatedTrades = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return filteredTrades.slice(start, start + PAGE_SIZE);
-  }, [filteredTrades, currentPage]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [query, symbolFilter, typeFilter, pnlFilter]);
-
-  useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
 
   const hasFilters =
     query.trim().length > 0 ||
     symbolFilter !== 'All Symbols' ||
     typeFilter !== 'ALL' ||
     pnlFilter !== 'ALL';
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [query, symbolFilter, typeFilter, pnlFilter, accountId]);
+
+  useEffect(() => {
+    if (!accountId) {
+      setTrades([]);
+      setTotalTrades(0);
+      setTotalPages(1);
+      setError(null);
+      return;
+    }
+
+    let active = true;
+    setLoading(true);
+    setError(null);
+
+    const params: Record<string, string | number> = {
+      page: currentPage,
+      per_page: PAGE_SIZE,
+    };
+
+    if (query.trim()) params.q = query.trim();
+    if (symbolFilter !== 'All Symbols') params.symbol = symbolFilter;
+    if (typeFilter !== 'ALL') params.type = typeFilter.toLowerCase();
+    if (pnlFilter === 'POSITIVE') params.pnl = 'positive';
+    if (pnlFilter === 'NEGATIVE') params.pnl = 'negative';
+
+    axios
+      .get(`/accounts/${accountId}/dashboard/recent-trades`, { params })
+      .then((res) => {
+        if (!active) return;
+        const payload = res.data?.data ?? {};
+        setTrades(Array.isArray(payload.data) ? payload.data : []);
+        setTotalTrades(Number(payload.total ?? 0));
+        setTotalPages(Math.max(1, Number(payload.last_page ?? 1)));
+      })
+      .catch((err) => {
+        if (!active) return;
+        setError(err.response?.data?.message || 'Failed to load recent trades');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [accountId, query, symbolFilter, typeFilter, pnlFilter, currentPage, refreshKey]);
 
   const clearFilters = () => {
     setQuery('');
@@ -115,7 +119,7 @@ export function RecentTrades() {
   };
 
   return (
-    <div 
+    <div
       className="rounded-lg p-4 sm:p-6 border w-full min-w-0 dash-hover-card"
       style={{ backgroundColor: c.bg, borderColor: c.border }}
     >
@@ -188,7 +192,7 @@ export function RecentTrades() {
           </div>
         </div>
         <p className="text-xs" style={{ color: c.subText }}>
-          Showing {paginatedTrades.length} of {filteredTrades.length} filtered trades ({mockTrades.length} total)
+          {loading ? 'Loading trades...' : `Showing ${trades.length} of ${totalTrades} trades`}
         </p>
       </div>
 
@@ -203,44 +207,34 @@ export function RecentTrades() {
             </tr>
           </thead>
           <tbody>
-            {paginatedTrades.map((trade) => (
-              <tr 
-                key={trade.id} 
+            {trades.map((trade) => (
+              <tr
+                key={trade.id}
                 className="transition-colors"
                 style={{ borderBottom: `1px solid ${c.border}` }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = c.hover}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = c.hover)}
+                onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
               >
                 <td className="py-3 text-sm" style={{ color: c.text }}>{trade.symbol}</td>
                 <td className="py-3">
                   <span
                     className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
-                      trade.type === 'BUY'
-                        ? 'bg-[#10B981]/10 text-[#10B981]'
-                        : 'bg-[#EF4444]/10 text-[#EF4444]'
+                      trade.type === 'buy' ? 'bg-[#10B981]/10 text-[#10B981]' : 'bg-[#EF4444]/10 text-[#EF4444]'
                     }`}
                   >
-                    {trade.type}
+                    {trade.type.toUpperCase()}
                   </span>
                 </td>
-                <td className="py-3 text-right text-sm" style={{ color: c.text }}>{trade.lotSize.toFixed(2)}</td>
-                <td
-                  className={`py-3 text-right text-sm font-medium ${
-                    trade.pnl >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'
-                  }`}
-                >
-                  {trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)}
+                <td className="py-3 text-right text-sm" style={{ color: c.text }}>{Number(trade.lot_size || 0).toFixed(2)}</td>
+                <td className={`py-3 text-right text-sm font-medium ${Number(trade.pnl) >= 0 ? 'text-[#10B981]' : 'text-[#EF4444]'}`}>
+                  {Number(trade.pnl) >= 0 ? '+' : ''}${Number(trade.pnl).toFixed(2)}
                 </td>
               </tr>
             ))}
-            {paginatedTrades.length === 0 ? (
+            {!loading && (trades.length === 0 || !accountId) ? (
               <tr>
-                <td
-                  colSpan={4}
-                  className="py-6 text-sm text-center"
-                  style={{ color: c.subText }}
-                >
-                  No trades match your current filters.
+                <td colSpan={4} className="py-6 text-sm text-center" style={{ color: c.subText }}>
+                  {!accountId ? 'No account yet. Complete setup and add your first trade.' : (error ?? 'No trades found.')}
                 </td>
               </tr>
             ) : null}
@@ -248,10 +242,7 @@ export function RecentTrades() {
         </table>
       </div>
 
-      <div
-        className="mt-4 pt-4 flex flex-wrap items-center justify-between gap-3"
-        style={{ borderTop: `1px solid ${c.border}` }}
-      >
+      <div className="mt-4 pt-4 flex flex-wrap items-center justify-between gap-3" style={{ borderTop: `1px solid ${c.border}` }}>
         <p className="text-xs" style={{ color: c.subText }}>
           Page {currentPage} of {totalPages}
         </p>
@@ -298,3 +289,4 @@ export function RecentTrades() {
     </div>
   );
 }
+

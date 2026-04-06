@@ -1,27 +1,16 @@
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useTheme } from '../context/ThemeContext';
 
-// Mock data for equity curve
-const generateEquityData = () => {
-  const data = [];
-  let equity = 100000;
-  const days = 30;
+interface EquityPoint {
+  day: string;
+  equity: number;
+}
 
-  for (let i = 0; i < days; i++) {
-    const change = Math.random() * 1000 - 200; // Some days gain, some lose
-    equity += change;
-    data.push({
-      day: `Day ${i + 1}`,
-      equity: Math.round(equity * 100) / 100,
-    });
-  }
+interface EquityCurveChartProps {
+  data?: EquityPoint[];
+}
 
-  return data;
-};
-
-const equityData = generateEquityData();
-
-export function EquityCurveChart() {
+export function EquityCurveChart({ data = [] }: EquityCurveChartProps) {
   const { theme } = useTheme();
 
   const colors = {
@@ -46,6 +35,7 @@ export function EquityCurveChart() {
   };
 
   const c = colors[theme];
+  const series = data.length > 0 ? data : [{ day: 'Day 1', equity: 0 }];
 
   return (
     <div 
@@ -54,7 +44,7 @@ export function EquityCurveChart() {
     >
       <h3 className="text-lg mb-4" style={{ color: c.text }}>Equity Curve</h3>
       <ResponsiveContainer width="100%" height={300}>
-        <AreaChart data={equityData}>
+        <AreaChart data={series}>
           <defs>
             <linearGradient id={`equityGradient-${theme}`} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={c.accent} stopOpacity={0.3} />

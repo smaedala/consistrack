@@ -21,6 +21,8 @@ class TradingAccountFactory extends Factory
             'daily_drawdown_limit_percent' => 5,
             'max_loss_limit_percent' => 10,
             'timezone' => 'UTC',
+            'trading_day_reset_timezone' => 'UTC',
+            'trading_day_reset_time' => '00:00',
             'status' => 'active',
         ];
     }

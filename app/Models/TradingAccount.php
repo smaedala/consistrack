@@ -19,6 +19,8 @@ class TradingAccount extends Model
         'daily_drawdown_limit_percent',
         'max_loss_limit_percent',
         'timezone',
+        'trading_day_reset_timezone',
+        'trading_day_reset_time',
         'status',
     ];
 
@@ -30,5 +32,20 @@ class TradingAccount extends Model
     public function alerts()
     {
         return $this->hasMany(AccountAlert::class, 'account_id');
+    }
+
+    public function importBatches()
+    {
+        return $this->hasMany(TradeImportBatch::class, 'account_id');
+    }
+
+    public function dailyStats()
+    {
+        return $this->hasMany(DailyAccountStat::class, 'account_id');
+    }
+
+    public function activityLogs()
+    {
+        return $this->hasMany(AccountActivityLog::class, 'account_id');
     }
 }

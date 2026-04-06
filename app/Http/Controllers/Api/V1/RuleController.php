@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\EvaluateAccountMetricsJob;
 use App\Models\TradingRule;
 use App\Models\TradingAccount;
 use Illuminate\Http\Request;
@@ -20,6 +21,7 @@ class RuleController extends Controller
             ->get();
 
         return response()->json([
+            'success' => true,
             'data' => $rules,
             'message' => 'Trading rules retrieved successfully',
         ]);
@@ -51,6 +53,7 @@ class RuleController extends Controller
         }
 
         return response()->json([
+            'success' => true,
             'data' => $rule,
             'message' => 'Trading rule retrieved successfully',
         ]);
@@ -76,7 +79,7 @@ class RuleController extends Controller
 
         if ($validated['trading_account_id']) {
             // Verify account belongs to user
-            TradingAccount::where('id', $validated['trading_account_id'])
+            $account = TradingAccount::where('id', $validated['trading_account_id'])
                 ->where('user_id', $user->id)
                 ->firstOrFail();
 
@@ -88,15 +91,24 @@ class RuleController extends Controller
                 ],
                 $validated
             );
+
+            $this->applyRuleToAccount($rule, $account);
         } else {
             // Global rule (applies to all accounts)
             $rule = TradingRule::updateOrCreate(
                 ['user_id' => $user->id, 'trading_account_id' => null],
                 $validated
             );
+
+            TradingAccount::where('user_id', $user->id)
+                ->get()
+                ->each(function (TradingAccount $account) use ($rule): void {
+                    $this->applyRuleToAccount($rule, $account);
+                });
         }
 
         return response()->json([
+            'success' => true,
             'data' => $rule,
             'message' => 'Trading rule saved successfully',
         ], 200);
@@ -123,7 +135,24 @@ class RuleController extends Controller
 
         $rule->update($validated);
 
+        if ($rule->trading_account_id) {
+            $account = TradingAccount::where('id', $rule->trading_account_id)
+                ->where('user_id', $user->id)
+                ->first();
+
+            if ($account) {
+                $this->applyRuleToAccount($rule, $account);
+            }
+        } else {
+            TradingAccount::where('user_id', $user->id)
+                ->get()
+                ->each(function (TradingAccount $account) use ($rule): void {
+                    $this->applyRuleToAccount($rule, $account);
+                });
+        }
+
         return response()->json([
+            'success' => true,
             'data' => $rule,
             'message' => 'Trading rule updated successfully',
         ]);
@@ -139,10 +168,43 @@ class RuleController extends Controller
             ->where('id', $id)
             ->firstOrFail();
 
+        if ($rule->trading_account_id) {
+            $account = TradingAccount::where('id', $rule->trading_account_id)
+                ->where('user_id', $user->id)
+                ->first();
+            if ($account) {
+                EvaluateAccountMetricsJob::dispatch($account->id);
+            }
+        } else {
+            TradingAccount::where('user_id', $user->id)->pluck('id')->each(function (int $accountId): void {
+                EvaluateAccountMetricsJob::dispatch($accountId);
+            });
+        }
+
         $rule->delete();
 
         return response()->json([
+            'success' => true,
             'message' => 'Trading rule deleted successfully',
         ]);
+    }
+
+    protected function applyRuleToAccount(TradingRule $rule, TradingAccount $account): void
+    {
+        $startingBalance = (float) $rule->starting_balance;
+        $profitTargetPercent = (float) $rule->profit_target_percent;
+
+        $account->initial_balance = $startingBalance;
+        if ($account->current_balance === null) {
+            $account->current_balance = $startingBalance;
+        }
+
+        // Store concrete values in account for a single source of truth in risk engine.
+        $account->profit_target = round(($startingBalance * $profitTargetPercent) / 100, 2);
+        $account->daily_drawdown_limit_percent = (int) round((float) $rule->max_daily_loss_percent);
+        $account->consistency_rule_percent = (int) round((float) $rule->consistency_threshold_percent);
+        $account->save();
+
+        EvaluateAccountMetricsJob::dispatch($account->id);
     }
 }
