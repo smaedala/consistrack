@@ -10,7 +10,10 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>('dark');
+  const [theme, setTheme] = useState<Theme>(() => {
+    const saved = localStorage.getItem('consistracker_theme');
+    return saved === 'light' ? 'light' : 'dark';
+  });
 
   useEffect(() => {
     const root = document.documentElement;
@@ -19,6 +22,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     } else {
       root.classList.remove('dark');
     }
+    localStorage.setItem('consistracker_theme', theme);
   }, [theme]);
 
   const toggleTheme = () => {

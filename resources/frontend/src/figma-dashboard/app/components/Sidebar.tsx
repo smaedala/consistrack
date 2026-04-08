@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { LayoutDashboard, FileText, BarChart3, Settings, User, LogOut } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
@@ -34,15 +34,17 @@ function SidebarLogo({ showText, textColor }: { showText: boolean; textColor: st
 
 export function Sidebar({ variant = 'desktop', expanded = false, onNavigateMobile }: SidebarProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { theme } = useTheme();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const isMobile = variant === 'mobile';
-  
+
+  const path = location.pathname || '';
   const navItems = [
-    { icon: LayoutDashboard, label: 'Dashboard', active: true, onClick: () => navigate('/dashboard') },
-    { icon: FileText, label: 'Trade Log', active: false, onClick: () => navigate('/trade-log') },
-    { icon: BarChart3, label: 'Analytics', active: false, onClick: () => navigate('/dashboard') },
-    { icon: Settings, label: 'Risk Settings', active: false, onClick: () => navigate('/risk-settings') },
+    { icon: LayoutDashboard, label: 'Dashboard', active: path === '/dashboard', onClick: () => navigate('/dashboard') },
+    { icon: FileText, label: 'Trade Log', active: path === '/trade-log', onClick: () => navigate('/trade-log') },
+    { icon: BarChart3, label: 'Analytics', active: path === '/alerts', onClick: () => navigate('/alerts') },
+    { icon: Settings, label: 'Risk Settings', active: path === '/risk-settings', onClick: () => navigate('/risk-settings') },
   ];
 
   const colors = {

@@ -7,6 +7,7 @@ use App\Jobs\EvaluateAccountMetricsJob;
 use App\Models\TradingRule;
 use App\Models\TradingAccount;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class RuleController extends Controller
 {
@@ -76,6 +77,7 @@ class RuleController extends Controller
         ]);
 
         $validated['user_id'] = $user->id;
+        $this->enforceRuleGuardrails($validated);
 
         if ($validated['trading_account_id']) {
             // Verify account belongs to user
@@ -132,6 +134,9 @@ class RuleController extends Controller
             'consistency_threshold_percent' => 'sometimes|numeric|min:0.1|max:100',
             'max_single_trade_percent' => 'sometimes|numeric|min:0.1|max:100',
         ]);
+
+        $candidate = array_merge($rule->toArray(), $validated);
+        $this->enforceRuleGuardrails($candidate);
 
         $rule->update($validated);
 
@@ -205,6 +210,40 @@ class RuleController extends Controller
         $account->consistency_rule_percent = (int) round((float) $rule->consistency_threshold_percent);
         $account->save();
 
-        EvaluateAccountMetricsJob::dispatch($account->id);
+        EvaluateAccountMetricsJob::dispatchSync($account->id);
+    }
+
+    protected function enforceRuleGuardrails(array $payload): void
+    {
+        $ruleType = (string) ($payload['consistency_rule_type'] ?? 'custom');
+        $threshold = isset($payload['consistency_threshold_percent'])
+            ? (float) $payload['consistency_threshold_percent']
+            : null;
+
+        if ($ruleType === '40' && $threshold !== null && abs($threshold - 40.0) > 0.0001) {
+            throw ValidationException::withMessages([
+                'consistency_threshold_percent' => 'For rule type 40, threshold must be exactly 40%.',
+            ]);
+        }
+
+        if ($ruleType === '15' && $threshold !== null && abs($threshold - 15.0) > 0.0001) {
+            throw ValidationException::withMessages([
+                'consistency_threshold_percent' => 'For rule type 15, threshold must be exactly 15%.',
+            ]);
+        }
+
+        if ($ruleType === 'custom' && $threshold !== null && ($threshold < 1 || $threshold > 100)) {
+            throw ValidationException::withMessages([
+                'consistency_threshold_percent' => 'Custom consistency threshold must be between 1 and 100.',
+            ]);
+        }
+
+        $dailyLoss = isset($payload['max_daily_loss_percent']) ? (float) $payload['max_daily_loss_percent'] : null;
+        $singleTrade = isset($payload['max_single_trade_percent']) ? (float) $payload['max_single_trade_percent'] : null;
+        if ($dailyLoss !== null && $singleTrade !== null && $singleTrade > $dailyLoss) {
+            throw ValidationException::withMessages([
+                'max_single_trade_percent' => 'Max single trade percent cannot be greater than max daily loss percent.',
+            ]);
+        }
     }
 }

@@ -13,6 +13,7 @@ class DispatchEvaluateAccountMetrics
     public function handle(TradeCreated $event): void
     {
         $accountId = $event->trade->account_id;
-        EvaluateAccountMetricsJob::dispatch($accountId);
+        // Keep dashboard/live cards in sync immediately after manual trade add.
+        EvaluateAccountMetricsJob::dispatchSync($accountId);
     }
 }

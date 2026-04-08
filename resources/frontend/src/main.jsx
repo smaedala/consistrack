@@ -10,6 +10,8 @@ import TradeLogPage from './pages/TradeLogPage'
 import RiskSettingsPage from './pages/RiskSettingsPage'
 import AlertsPage from './pages/AlertsPage'
 import './index.css'
+import './figma-dashboard/styles/fonts.css'
+import './figma-dashboard/styles/index.css'
 
 axios.defaults.baseURL = '/api/v1'
 const token = localStorage.getItem('api_token')

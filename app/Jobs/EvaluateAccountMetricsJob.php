@@ -81,6 +81,7 @@ class EvaluateAccountMetricsJob implements ShouldQueue
 
         $this->upsertRecentAlert($account->id, 'consistency', $consistencyRisk >= 100 ? 'critical' : ($consistencyRisk >= 70 ? 'warning' : 'info'), [
             'risk_percent_of_limit' => $consistencyRisk,
+            'consistency_score_percent' => $metrics['consistencyScorePercent'] ?? 0,
             'top_daily_percent_of_target' => $metrics['topDailyPercentOfTarget'] ?? 0,
             'limit_percent' => $account->consistency_rule_percent,
         ]);

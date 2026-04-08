@@ -72,7 +72,8 @@ class ImportBatchController extends Controller
             ]);
         });
 
-        EvaluateAccountMetricsJob::dispatch($account->id);
+        // Recompute immediately after rollback so UI reflects reverted batch right away.
+        EvaluateAccountMetricsJob::dispatchSync($account->id);
         app(ActivityLogService::class)->log(
             $account,
             $request->user(),

@@ -60,6 +60,18 @@ export function RecentTrades({ accountId, refreshKey = 0 }: RecentTradesProps) {
     typeFilter !== 'ALL' ||
     pnlFilter !== 'ALL';
 
+  const pageButtons = useMemo(() => {
+    const maxVisible = 5;
+    if (totalPages <= maxVisible) {
+      return Array.from({ length: totalPages }, (_, idx) => idx + 1);
+    }
+    const pages = new Set<number>([1, totalPages, currentPage]);
+    if (currentPage - 1 > 1) pages.add(currentPage - 1);
+    if (currentPage + 1 < totalPages) pages.add(currentPage + 1);
+    const sorted = Array.from(pages).sort((a, b) => a - b);
+    return sorted;
+  }, [totalPages, currentPage]);
+
   useEffect(() => {
     setCurrentPage(1);
   }, [query, symbolFilter, typeFilter, pnlFilter, accountId]);
@@ -120,7 +132,7 @@ export function RecentTrades({ accountId, refreshKey = 0 }: RecentTradesProps) {
 
   return (
     <div
-      className="rounded-lg p-4 sm:p-6 border w-full min-w-0 dash-hover-card"
+      className="rounded-lg p-4 sm:p-6 border w-full min-w-0 dash-hover-card dashboard-surface"
       style={{ backgroundColor: c.bg, borderColor: c.border }}
     >
       <div className="flex flex-col gap-3 mb-4">
@@ -180,7 +192,7 @@ export function RecentTrades({ accountId, refreshKey = 0 }: RecentTradesProps) {
                 {hasFilters ? (
                   <button
                     onClick={clearFilters}
-                    className="inline-flex items-center justify-center gap-1 px-2.5 py-2 rounded-xl border text-xs font-medium transition-colors min-w-[70px] shrink-0"
+                    className="inline-flex items-center justify-center gap-1 px-2.5 py-2 rounded-xl border text-xs font-medium transition-colors min-w-[70px] shrink-0 dash-hover-control"
                     style={{ borderColor: c.border, color: c.subText, backgroundColor: theme === 'dark' ? '#121724' : '#F9FAFB' }}
                   >
                     <X size={14} />
@@ -251,20 +263,22 @@ export function RecentTrades({ accountId, refreshKey = 0 }: RecentTradesProps) {
             type="button"
             disabled={currentPage === 1}
             onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-            className="px-3 py-1.5 rounded-lg border text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 rounded-lg border text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed dash-hover-control"
             style={{ borderColor: c.border, color: c.text, backgroundColor: theme === 'dark' ? '#121724' : '#F9FAFB' }}
           >
             Previous
           </button>
-          {Array.from({ length: totalPages }).map((_, idx) => {
-            const page = idx + 1;
+          {pageButtons.map((page, idx) => {
+            const prev = pageButtons[idx - 1];
             const active = page === currentPage;
             return (
+              <span key={`wrap-${page}`} className="inline-flex items-center gap-2">
+                {prev && page - prev > 1 ? <span className="text-xs" style={{ color: c.subText }}>…</span> : null}
               <button
                 key={page}
                 type="button"
                 onClick={() => setCurrentPage(page)}
-                className="w-8 h-8 rounded-lg border text-xs font-semibold"
+                className="w-8 h-8 rounded-lg border text-xs font-semibold dash-hover-control"
                 style={{
                   borderColor: active ? (theme === 'dark' ? '#00F2FE' : '#0EA5E9') : c.border,
                   color: active ? (theme === 'dark' ? '#00F2FE' : '#0EA5E9') : c.text,
@@ -273,13 +287,14 @@ export function RecentTrades({ accountId, refreshKey = 0 }: RecentTradesProps) {
               >
                 {page}
               </button>
+              </span>
             );
           })}
           <button
             type="button"
             disabled={currentPage === totalPages}
             onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-            className="px-3 py-1.5 rounded-lg border text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 rounded-lg border text-xs font-medium disabled:opacity-50 disabled:cursor-not-allowed dash-hover-control"
             style={{ borderColor: c.border, color: c.text, backgroundColor: theme === 'dark' ? '#121724' : '#F9FAFB' }}
           >
             Next
@@ -289,4 +304,3 @@ export function RecentTrades({ accountId, refreshKey = 0 }: RecentTradesProps) {
     </div>
   );
 }
-

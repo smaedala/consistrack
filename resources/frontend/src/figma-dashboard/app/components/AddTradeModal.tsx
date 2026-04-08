@@ -1,37 +1,45 @@
 import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { CircleAlert, CircleCheck, X } from 'lucide-react';
+import { CircleAlert, CircleCheck, CircleHelp, X } from 'lucide-react';
 
 type AddTradeModalProps = {
   open: boolean;
   onClose: () => void;
   onSaved?: () => void;
   onNotify?: (type: 'success' | 'error' | 'info', message: string) => void;
+  onOpenGuide?: () => void;
+  helpMode?: boolean;
+  guideProgress?: {
+    accountCreated: boolean;
+    rulesConfigured: boolean;
+    firstTradeAdded: boolean;
+    firstImportCompleted: boolean;
+  };
   theme: 'dark' | 'light';
 };
 
 type PreviewState = 'safe' | 'caution' | 'breach';
 
-const STRATEGY_PRESETS = [
-  'Silver Bullet',
-  'Judas Swing',
-  'London Open Reversal',
-  'NY Session Continuation',
-  'Liquidity Sweep Reversal',
-  'Order Block Reclaim',
-  'Fair Value Gap (FVG) Fill',
-  'Breaker Block',
-  'Mitigation Block',
-  'Market Structure Shift (MSS)',
-  'Power of 3 (PO3)',
-  'Killzone Setup',
-  'Range Expansion',
-  'News Volatility Fade',
-  'Trend Pullback Entry',
-];
+function Hint({ text, color, helpMode = false }: { text: string; color: string; helpMode?: boolean }) {
+  return (
+    <span
+      className="inline-flex items-center ml-1 align-middle cursor-help"
+      title={text}
+      aria-label={text}
+      style={{
+        color: helpMode ? '#00F2FE' : color,
+        opacity: 0.85,
+        filter: helpMode ? 'drop-shadow(0 0 6px rgba(0,242,254,0.45))' : 'none',
+      }}
+    >
+      <CircleHelp size={13} />
+    </span>
+  );
+}
 
-export function AddTradeModal({ open, onClose, onSaved, onNotify, theme }: AddTradeModalProps) {
+export function AddTradeModal({ open, onClose, onSaved, onNotify, onOpenGuide, helpMode = false, guideProgress, theme }: AddTradeModalProps) {
   const [accountId, setAccountId] = useState<number | null>(null);
+  const [defaultStrategyTag, setDefaultStrategyTag] = useState<string | null>(null);
   const [loadingAccount, setLoadingAccount] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,8 +64,7 @@ export function AddTradeModal({ open, onClose, onSaved, onNotify, theme }: AddTr
     pnl: '',
     close_time: new Date().toISOString().slice(0, 16),
   });
-  const [strategySelection, setStrategySelection] = useState<string>('');
-  const [customStrategy, setCustomStrategy] = useState<string>('');
+  const symbolPattern = /^[A-Z0-9._-]{3,20}$/;
 
   const palette = useMemo(
     () =>
@@ -111,6 +118,7 @@ export function AddTradeModal({ open, onClose, onSaved, onNotify, theme }: AddTr
           return;
         }
         setAccountId(first.id);
+        setDefaultStrategyTag(first.default_strategy_tag ?? null);
       })
       .catch((err) => {
         if (!mounted) return;
@@ -168,6 +176,15 @@ export function AddTradeModal({ open, onClose, onSaved, onNotify, theme }: AddTr
   const maxAllowedDay = Number(preview?.max_allowed_day_profit ?? 0);
   const remainingBeforeBreach = Number(preview?.remaining_before_breach ?? 0);
   const breachOverAmount = Number(preview?.breach_over_amount ?? 0);
+  const normalizedSymbol = (form.symbol || '').trim().toUpperCase();
+  const symbolIsValid = symbolPattern.test(normalizedSymbol);
+  const progress = guideProgress ?? {
+    accountCreated: false,
+    rulesConfigured: false,
+    firstTradeAdded: false,
+    firstImportCompleted: false,
+  };
+  const hardBlocked = !progress.accountCreated || !progress.rulesConfigured;
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -177,22 +194,17 @@ export function AddTradeModal({ open, onClose, onSaved, onNotify, theme }: AddTr
     setSuccess(null);
     try {
       await axios.post(`/accounts/${accountId}/trades`, {
-        symbol: form.symbol.trim().toUpperCase(),
+        symbol: normalizedSymbol,
         type: form.type,
         lot_size: Number(form.lot_size || 0),
         pnl: Number(form.pnl),
         close_time: new Date(form.close_time).toISOString(),
-        strategy_tag:
-          strategySelection === 'custom'
-            ? (customStrategy.trim() || null)
-            : (strategySelection || null),
+        strategy_tag: defaultStrategyTag || null,
       });
       setSuccess('Trade added successfully.');
       onNotify?.('success', 'Trade added successfully.');
       onSaved?.();
       setForm((prev) => ({ ...prev, pnl: '' }));
-      setStrategySelection('');
-      setCustomStrategy('');
       window.setTimeout(() => {
         onClose();
       }, 400);
@@ -212,7 +224,11 @@ export function AddTradeModal({ open, onClose, onSaved, onNotify, theme }: AddTr
     >
       <div
         className="w-full max-w-xl max-h-[92vh] rounded-2xl border shadow-2xl flex flex-col"
-        style={{ backgroundColor: palette.card, borderColor: palette.border }}
+        style={{
+          backgroundColor: palette.card,
+          borderColor: palette.border,
+          boxShadow: helpMode ? '0 0 0 1px rgba(0,242,254,0.35), 0 0 22px rgba(0,242,254,0.14)' : undefined,
+        }}
       >
         <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: palette.border }}>
           <div>
@@ -238,21 +254,45 @@ export function AddTradeModal({ open, onClose, onSaved, onNotify, theme }: AddTr
             {loadingAccount ? <p style={{ color: palette.subText }}>Loading account...</p> : null}
             {error ? <p style={{ color: palette.danger, fontSize: 13 }}>{error}</p> : null}
             {success ? <p style={{ color: palette.success, fontSize: 13 }}>{success}</p> : null}
+            {hardBlocked ? (
+              <div
+                className="rounded-lg border px-3 py-2 flex items-center justify-between gap-3"
+                style={{ borderColor: `${palette.warning}66`, backgroundColor: `${palette.warning}14` }}
+              >
+                <p className="text-xs" style={{ color: palette.subText }}>
+                  Setup incomplete. Please create an account and configure risk rules before adding trades.
+                </p>
+                <button
+                  type="button"
+                  className="px-2 py-1 rounded-md border text-xs font-medium"
+                  style={{ borderColor: palette.border, color: palette.text, backgroundColor: palette.fieldBg }}
+                  onClick={() => onOpenGuide?.()}
+                >
+                  Open Guide
+                </button>
+              </div>
+            ) : null}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="text-sm" style={{ color: palette.subText }}>
               Symbol
+              <Hint helpMode={helpMode} text="Trading pair/instrument code like EURUSD, XAUUSD, US30." color={palette.subText} />
               <input
                 value={form.symbol}
                 onChange={(e) => setForm((p) => ({ ...p, symbol: e.target.value }))}
                 className="mt-1 w-full rounded-lg border px-3 py-2 outline-none"
                 style={{ backgroundColor: palette.fieldBg, borderColor: palette.border, color: palette.text }}
+                placeholder="EURUSD, XAUUSD, US30"
                 required
               />
+              <p className="mt-1 text-[11px]" style={{ color: symbolIsValid || normalizedSymbol.length === 0 ? palette.subText : palette.danger }}>
+                Use trading symbol only (letters/numbers, optional `.` `_` `-`, no spaces).
+              </p>
             </label>
 
             <label className="text-sm" style={{ color: palette.subText }}>
               Type
+              <Hint helpMode={helpMode} text="Buy for long entries, Sell for short entries." color={palette.subText} />
               <div className="mt-1 grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -283,6 +323,7 @@ export function AddTradeModal({ open, onClose, onSaved, onNotify, theme }: AddTr
 
             <label className="text-sm" style={{ color: palette.subText }}>
               PnL
+              <Hint helpMode={helpMode} text="Profit or loss of this trade. Positive for profit, negative for loss." color={palette.subText} />
               <input
                 type="number"
                 step="0.01"
@@ -297,6 +338,7 @@ export function AddTradeModal({ open, onClose, onSaved, onNotify, theme }: AddTr
 
             <label className="text-sm" style={{ color: palette.subText }}>
               Lot Size
+              <Hint helpMode={helpMode} text="Position size used for the trade." color={palette.subText} />
               <input
                 type="number"
                 step="0.01"
@@ -310,25 +352,8 @@ export function AddTradeModal({ open, onClose, onSaved, onNotify, theme }: AddTr
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <label className="text-sm" style={{ color: palette.subText }}>
-                Strategy Setup
-                <select
-                  value={strategySelection}
-                  onChange={(e) => setStrategySelection(e.target.value)}
-                  className="mt-1 w-full rounded-lg border px-3 py-2 outline-none"
-                  style={{ backgroundColor: palette.fieldBg, borderColor: palette.border, color: palette.text }}
-                >
-                  <option value="">Select strategy</option>
-                  {STRATEGY_PRESETS.map((strategy) => (
-                    <option key={strategy} value={strategy}>
-                      {strategy}
-                    </option>
-                  ))}
-                  <option value="custom">Custom...</option>
-                </select>
-              </label>
-
-              <label className="text-sm" style={{ color: palette.subText }}>
                 Close Time
+                <Hint helpMode={helpMode} text="Used to place this trade in the correct 24h trading day." color={palette.subText} />
                 <input
                   type="datetime-local"
                   value={form.close_time}
@@ -341,21 +366,17 @@ export function AddTradeModal({ open, onClose, onSaved, onNotify, theme }: AddTr
                   Needed to place this trade in the correct trading day for daily-loss reset and consistency checks.
                 </p>
               </label>
+              <div className="text-sm" style={{ color: palette.subText }}>
+                Strategy (from Account Setup)
+                <Hint helpMode={helpMode} text="Default strategy selected during onboarding." color={palette.subText} />
+                <div
+                  className="mt-1 w-full rounded-lg border px-3 py-2"
+                  style={{ backgroundColor: palette.fieldBg, borderColor: palette.border, color: palette.text, minHeight: 42 }}
+                >
+                  {defaultStrategyTag || 'No default strategy selected'}
+                </div>
+              </div>
             </div>
-
-            {strategySelection === 'custom' ? (
-              <label className="block text-sm" style={{ color: palette.subText }}>
-                Custom Strategy Name
-                <input
-                  value={customStrategy}
-                  onChange={(e) => setCustomStrategy(e.target.value)}
-                  className="mt-1 w-full rounded-lg border px-3 py-2 outline-none"
-                  style={{ backgroundColor: palette.fieldBg, borderColor: palette.border, color: palette.text }}
-                  placeholder="Type your strategy..."
-                  required
-                />
-              </label>
-            ) : null}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
             <div className="rounded-lg border px-3 py-2" style={{ borderColor: palette.border, backgroundColor: palette.fieldBg }}>
@@ -435,7 +456,13 @@ export function AddTradeModal({ open, onClose, onSaved, onNotify, theme }: AddTr
             </button>
             <button
               type="submit"
-              disabled={saving || loadingAccount || !accountId || (strategySelection === 'custom' && customStrategy.trim().length === 0)}
+              disabled={
+                saving ||
+                loadingAccount ||
+                !accountId ||
+                hardBlocked ||
+                !symbolIsValid
+              }
               className="px-4 py-2 rounded-lg text-sm font-medium"
               style={{
                 backgroundColor: palette.cyan,

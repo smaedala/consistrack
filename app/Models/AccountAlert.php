@@ -14,10 +14,14 @@ class AccountAlert extends Model
         'alert_type',
         'payload',
         'level',
+        'acknowledged_at',
+        'snoozed_until',
     ];
 
     protected $casts = [
         'payload' => 'array',
+        'acknowledged_at' => 'datetime',
+        'snoozed_until' => 'datetime',
     ];
 
     public function account()

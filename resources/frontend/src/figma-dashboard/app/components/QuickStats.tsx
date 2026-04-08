@@ -97,7 +97,7 @@ export function QuickStats({ data }: QuickStatsProps) {
 
   return (
     <div
-      className="rounded-lg p-6 border"
+      className="rounded-lg p-6 border dash-hover-card dashboard-surface"
       style={{ backgroundColor: c.bg, borderColor: c.border }}
     >
       <h3 className="text-lg mb-4" style={{ color: c.text }}>Quick Statistics</h3>

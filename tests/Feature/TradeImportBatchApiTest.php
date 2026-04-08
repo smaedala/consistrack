@@ -82,13 +82,17 @@ class TradeImportBatchApiTest extends TestCase
         $response = $this->withToken($token)
             ->postJson("/api/v1/accounts/{$account->id}/import-csv", $payload);
 
-        $response->assertStatus(400)->assertJsonPath('success', false);
+        $response->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Import validation failed.')
+            ->assertJsonStructure(['data' => ['batch_uuid', 'errors' => [['row', 'message']]]]);
 
         $this->assertDatabaseCount('trades', 0);
 
         $failedBatch = TradeImportBatch::where('account_id', $account->id)->latest()->first();
         $this->assertNotNull($failedBatch);
         $this->assertSame('failed', $failedBatch->status);
+        $this->assertSame(1, (int) $failedBatch->error_count);
     }
 
     public function test_user_can_undo_import_batch(): void
@@ -141,5 +145,44 @@ class TradeImportBatchApiTest extends TestCase
 
         $batch = TradeImportBatch::where('uuid', $batchUuid)->firstOrFail();
         $this->assertSame('reverted', $batch->status);
+    }
+
+    public function test_import_idempotency_key_replays_previous_result_without_new_batch(): void
+    {
+        $user = User::factory()->create();
+        $account = TradingAccount::factory()->create(['user_id' => $user->id]);
+        $token = $user->createToken('test-token', ['*'])->plainTextToken;
+
+        $payload = [
+            'idempotency_key' => 'import-key-001',
+            'parsed_trades' => [
+                [
+                    'symbol' => 'EURUSD',
+                    'type' => 'buy',
+                    'lot_size' => 0.5,
+                    'pnl' => 200,
+                    'close_time' => now()->subHour()->toISOString(),
+                    'external_id' => 'IK-1',
+                ],
+            ],
+        ];
+
+        $first = $this->withToken($token)
+            ->postJson("/api/v1/accounts/{$account->id}/import-csv", $payload)
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.idempotent_replay', false);
+
+        $firstBatchUuid = $first->json('data.batch_uuid');
+
+        $this->withToken($token)
+            ->postJson("/api/v1/accounts/{$account->id}/import-csv", $payload)
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.idempotent_replay', true)
+            ->assertJsonPath('data.batch_uuid', $firstBatchUuid);
+
+        $this->assertSame(1, TradeImportBatch::where('account_id', $account->id)->count());
+        $this->assertSame(1, Trade::where('account_id', $account->id)->count());
     }
 }

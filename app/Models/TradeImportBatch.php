@@ -14,6 +14,7 @@ class TradeImportBatch extends Model
         'account_id',
         'source',
         'file_name',
+        'idempotency_key',
         'status',
         'total_rows',
         'imported_count',
@@ -41,4 +42,3 @@ class TradeImportBatch extends Model
         return $this->hasMany(Trade::class, 'import_batch_id');
     }
 }
-

@@ -10,6 +10,13 @@ type ImportTradesModalProps = {
   onClose: () => void;
   onImported?: () => void;
   onNotify?: (type: 'success' | 'error' | 'info', message: string) => void;
+  onOpenGuide?: () => void;
+  guideProgress?: {
+    accountCreated: boolean;
+    rulesConfigured: boolean;
+    firstTradeAdded: boolean;
+    firstImportCompleted: boolean;
+  };
 };
 
 type ParsedTrade = {
@@ -22,7 +29,9 @@ type ParsedTrade = {
   strategy_tag: string;
 };
 
-export function ImportTradesModal({ open, accountId, theme, onClose, onImported, onNotify }: ImportTradesModalProps) {
+type BrokerPreset = 'auto' | 'mt4' | 'mt5' | 'ctrader' | 'dxtrade';
+
+export function ImportTradesModal({ open, accountId, theme, onClose, onImported, onNotify, onOpenGuide, guideProgress }: ImportTradesModalProps) {
   const [dragging, setDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +40,13 @@ export function ImportTradesModal({ open, accountId, theme, onClose, onImported,
   const [result, setResult] = useState<any>(null);
   const [history, setHistory] = useState<any[]>([]);
   const [undoLoadingUuid, setUndoLoadingUuid] = useState<string | null>(null);
+  const [brokerPreset, setBrokerPreset] = useState<BrokerPreset>('auto');
+  const progress = guideProgress ?? {
+    accountCreated: false,
+    rulesConfigured: false,
+    firstTradeAdded: false,
+    firstImportCompleted: false,
+  };
 
   const palette = useMemo(
     () =>
@@ -106,9 +122,16 @@ export function ImportTradesModal({ open, accountId, theme, onClose, onImported,
     return undefined;
   }
 
-  function extractStrategyTag(comment: string) {
+  function extractStrategyTag(comment: string, preset: BrokerPreset = 'auto') {
     if (!comment) return '';
-    const patterns = [/Silver Bullet/i, /Judas Swing/i, /London Sweep/i, /OB Reclaim/i];
+    const presetPatterns: Record<BrokerPreset, RegExp[]> = {
+      auto: [/Silver Bullet/i, /Judas Swing/i, /London Sweep/i, /OB Reclaim/i, /FVG/i, /Breaker/i],
+      mt4: [/SB/i, /Judas/i, /London/i, /OB/i],
+      mt5: [/Silver Bullet/i, /Judas Swing/i, /Killzone/i, /FVG/i],
+      ctrader: [/Liquidity Sweep/i, /Order Block/i, /MSS/i, /PO3/i],
+      dxtrade: [/Reversal/i, /Continuation/i, /Trend Pullback/i, /Range Expansion/i],
+    };
+    const patterns = presetPatterns[preset] || presetPatterns.auto;
     for (const p of patterns) {
       const m = comment.match(p);
       if (m) return m[0];
@@ -116,7 +139,7 @@ export function ImportTradesModal({ open, accountId, theme, onClose, onImported,
     return '';
   }
 
-  function normalizeRow(raw: Record<string, any>): ParsedTrade {
+  function normalizeRow(raw: Record<string, any>, preset: BrokerPreset): ParsedTrade {
     const ticket = getFieldLower(raw, ['ticket', 'order', 'id']);
     const symbol = getFieldLower(raw, ['symbol', 'item', 'instrument']);
     const type = getFieldLower(raw, ['type', 'side', 'cmd']);
@@ -134,7 +157,7 @@ export function ImportTradesModal({ open, accountId, theme, onClose, onImported,
       lot_size: lot ? parseFloat(String(lot).replace(/,/g, '')) || 0 : 0,
       pnl: pnl ? parseFloat(String(pnl).replace(/,/g, '')) || 0 : 0,
       close_time: closeTime ? String(closeTime).trim() : new Date().toISOString(),
-      strategy_tag: extractStrategyTag(String(comment || '')),
+      strategy_tag: extractStrategyTag(String(comment || ''), preset),
     };
   }
 
@@ -155,7 +178,7 @@ export function ImportTradesModal({ open, accountId, theme, onClose, onImported,
       transformHeader: (h) => (h || '').trim(),
       complete: (res) => {
         const rows = (res.data || []) as Record<string, any>[];
-        const mapped = rows.map((r) => normalizeRow(r));
+        const mapped = rows.map((r) => normalizeRow(r, brokerPreset));
         const totalPnl = mapped.reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
         setParsedTrades(mapped);
         setPreview({ count: mapped.length, totalPnl, sample: mapped.slice(0, 7) });
@@ -234,42 +257,78 @@ export function ImportTradesModal({ open, accountId, theme, onClose, onImported,
         </div>
 
         <div className="p-5 space-y-4">
-          {!preview && !result ? (
-            <label
-              className="block rounded-xl border-2 border-dashed p-8 text-center cursor-pointer transition-all"
-              style={{
-                borderColor: dragging ? palette.accent : palette.border,
-                backgroundColor: palette.field,
-              }}
-              onDragEnter={(e) => {
-                e.preventDefault();
-                setDragging(true);
-              }}
-              onDragOver={(e) => e.preventDefault()}
-              onDragLeave={(e) => {
-                e.preventDefault();
-                setDragging(false);
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragging(false);
-                const file = e.dataTransfer.files?.[0];
-                if (file) parseFile(file);
-              }}
+          {!progress.rulesConfigured ? (
+            <div
+              className="rounded-lg border px-3 py-2 flex items-center justify-between gap-3"
+              style={{ borderColor: `${palette.accent}66`, backgroundColor: `${palette.accent}12` }}
             >
-              <input
-                type="file"
-                accept=".csv,.txt"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
+              <p className="text-xs" style={{ color: palette.subText }}>
+                Tip: Configure risk rules first for best consistency and drawdown tracking after import.
+              </p>
+              <button
+                type="button"
+                className="px-2 py-1 rounded-md border text-xs font-medium"
+                style={{ borderColor: palette.border, color: palette.text, backgroundColor: palette.field }}
+                onClick={() => onOpenGuide?.()}
+              >
+                Open Guide
+              </button>
+            </div>
+          ) : null}
+          {!preview && !result ? (
+            <div className="space-y-3">
+              <label className="text-sm block" style={{ color: palette.subText }}>
+                Broker/Platform Preset
+                <select
+                  value={brokerPreset}
+                  onChange={(e) => setBrokerPreset(e.target.value as BrokerPreset)}
+                  className="mt-1 w-full rounded-lg border px-3 py-2"
+                  style={{ backgroundColor: palette.field, borderColor: palette.border, color: palette.text }}
+                >
+                  <option value="auto">Auto Detect</option>
+                  <option value="mt4">MetaTrader 4</option>
+                  <option value="mt5">MetaTrader 5</option>
+                  <option value="ctrader">cTrader</option>
+                  <option value="dxtrade">DXtrade</option>
+                </select>
+              </label>
+
+              <label
+                className="block rounded-xl border-2 border-dashed p-8 text-center cursor-pointer transition-all"
+                style={{
+                  borderColor: dragging ? palette.accent : palette.border,
+                  backgroundColor: palette.field,
+                }}
+                onDragEnter={(e) => {
+                  e.preventDefault();
+                  setDragging(true);
+                }}
+                onDragOver={(e) => e.preventDefault()}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  setDragging(false);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragging(false);
+                  const file = e.dataTransfer.files?.[0];
                   if (file) parseFile(file);
                 }}
-              />
-              <UploadCloud size={28} style={{ color: palette.accent, margin: '0 auto 10px auto' }} />
-              <p style={{ color: palette.text, fontWeight: 600 }}>Drop CSV here or click to browse</p>
-              <p className="text-sm mt-1" style={{ color: palette.subText }}>MT4/MT5 history export (.csv or .txt)</p>
-            </label>
+              >
+                <input
+                  type="file"
+                  accept=".csv,.txt"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) parseFile(file);
+                  }}
+                />
+                <UploadCloud size={28} style={{ color: palette.accent, margin: '0 auto 10px auto' }} />
+                <p style={{ color: palette.text, fontWeight: 600 }}>Drop CSV here or click to browse</p>
+                <p className="text-sm mt-1" style={{ color: palette.subText }}>MT4/MT5 history export (.csv or .txt)</p>
+              </label>
+            </div>
           ) : null}
 
           {error ? <p className="text-sm" style={{ color: palette.danger }}>{error}</p> : null}

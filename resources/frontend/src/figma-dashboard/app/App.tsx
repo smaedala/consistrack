@@ -24,6 +24,7 @@ type DashboardMetrics = {
   profitTarget?: number;
   totalPnL?: number;
   topDailyPercentOfTarget?: number;
+  consistencyScorePercent?: number;
   dailyDrawdownPercent?: number;
   status?: string;
 };
@@ -54,6 +55,9 @@ type AccountItem = {
   status?: string;
   initial_balance?: number;
   consistency_rule_percent?: number;
+  consistency_rule_enabled?: boolean;
+  daily_drawdown_limit_percent?: number;
+  max_loss_limit_percent?: number;
 };
 
 type LatestImport = {
@@ -63,6 +67,15 @@ type LatestImport = {
   status: string;
 } | null;
 
+type PortfolioItem = {
+  id: number;
+  name: string;
+  balance: number;
+  pnl: number;
+  consistency: number;
+  status: string;
+};
+
 function Dashboard() {
   const { theme } = useTheme();
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -71,12 +84,16 @@ function Dashboard() {
   const [isAddTradeOpen, setIsAddTradeOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
+  const [helpMode, setHelpMode] = useState(false);
   const [hasAccount, setHasAccount] = useState<boolean | null>(null);
   const [accounts, setAccounts] = useState<AccountItem[]>([]);
   const [accountId, setAccountId] = useState<number | null>(null);
   const [accountName, setAccountName] = useState<string>('No Account Yet');
   const [initialBalance, setInitialBalance] = useState<number>(0);
   const [consistencyLimit, setConsistencyLimit] = useState<number>(40);
+  const [consistencyEnabled, setConsistencyEnabled] = useState<boolean>(true);
+  const [dailyLossLimitPercent, setDailyLossLimitPercent] = useState<number>(5);
+  const [maxLossLimitPercent, setMaxLossLimitPercent] = useState<number>(10);
   const [metrics, setMetrics] = useState<DashboardMetrics>({});
   const [equitySeries, setEquitySeries] = useState<EquityPoint[]>([]);
   const [symbolPerformance, setSymbolPerformance] = useState<SymbolRow[]>([]);
@@ -85,8 +102,9 @@ function Dashboard() {
   const [latestImport, setLatestImport] = useState<LatestImport>(null);
   const [undoingLatestImport, setUndoingLatestImport] = useState(false);
   const [toasts, setToasts] = useState<Array<{ id: number; type: 'success' | 'error' | 'info'; message: string }>>([]);
+  const [portfolioRows, setPortfolioRows] = useState<PortfolioItem[]>([]);
 
-  const bgColor = theme === 'dark' ? '#101217' : '#F3F4F6';
+  const bgColor = theme === 'dark' ? '#101217' : '#eef4fb';
 
   useEffect(() => {
     const onResize = () => setIsMobile(window.innerWidth < 768);
@@ -105,6 +123,9 @@ function Dashboard() {
         setAccountName('No Account Yet');
         setInitialBalance(0);
         setConsistencyLimit(40);
+        setConsistencyEnabled(true);
+        setDailyLossLimitPercent(5);
+        setMaxLossLimitPercent(10);
         setMetrics({});
         setEquitySeries([]);
         setSymbolPerformance([]);
@@ -113,13 +134,19 @@ function Dashboard() {
         return;
       }
 
-      const first = list[0] as AccountItem;
+      const preferredId = Number(localStorage.getItem('active_account_id') || 0);
+      const first = (list.find((acc) => Number(acc.id) === preferredId) || list[0]) as AccountItem;
       setHasAccount(true);
       setAccountId(first.id);
       setAccountName(first.account_name || 'Active Account');
       setInitialBalance(Number(first.initial_balance || 0));
       setConsistencyLimit(Number(first.consistency_rule_percent || 40));
+      setConsistencyEnabled(Boolean(first.consistency_rule_enabled ?? true));
+      setDailyLossLimitPercent(Number(first.daily_drawdown_limit_percent || 5));
+      setMaxLossLimitPercent(Number(first.max_loss_limit_percent || 10));
+      localStorage.setItem('active_account_id', String(first.id));
       await refreshDashboard(first.id);
+      await refreshPortfolio(list);
     } catch {
       setHasAccount(false);
       setAccountId(null);
@@ -134,7 +161,45 @@ function Dashboard() {
     setAccountName(found.account_name || 'Active Account');
     setInitialBalance(Number(found.initial_balance || 0));
     setConsistencyLimit(Number(found.consistency_rule_percent || 40));
+    setConsistencyEnabled(Boolean(found.consistency_rule_enabled ?? true));
+    setDailyLossLimitPercent(Number(found.daily_drawdown_limit_percent || 5));
+    setMaxLossLimitPercent(Number(found.max_loss_limit_percent || 10));
+    localStorage.setItem('active_account_id', String(found.id));
     refreshDashboard(found.id);
+  }
+
+  async function refreshPortfolio(list = accounts) {
+    if (!Array.isArray(list) || list.length <= 1) {
+      setPortfolioRows([]);
+      return;
+    }
+
+    const rows = await Promise.all(
+      list.map(async (acc) => {
+        try {
+          const res = await axios.get(`/accounts/${acc.id}/dashboard/summary`);
+          const m = res.data?.data?.metrics || {};
+          return {
+            id: acc.id,
+            name: acc.account_name,
+            balance: Number(m.currentBalance || acc.initial_balance || 0),
+            pnl: Number(m.totalPnL || 0),
+            consistency: Number(m.consistencyScorePercent || 0),
+            status: String(m.status || acc.status || 'active'),
+          } as PortfolioItem;
+        } catch {
+          return {
+            id: acc.id,
+            name: acc.account_name,
+            balance: Number(acc.initial_balance || 0),
+            pnl: 0,
+            consistency: 0,
+            status: String(acc.status || 'active'),
+          } as PortfolioItem;
+        }
+      })
+    );
+    setPortfolioRows(rows);
   }
 
   async function refreshDashboard(id: number | null = accountId) {
@@ -172,6 +237,7 @@ function Dashboard() {
       setLatestImport(null);
     }
     setRecentTradesRefreshKey((k) => k + 1);
+    await refreshPortfolio();
   }
 
   async function undoLastImport() {
@@ -222,14 +288,22 @@ function Dashboard() {
   const totalProfit = symbolPerformance.reduce((sum, row) => sum + Math.max(0, Number(row.pnl || 0)), 0);
   const totalLossAbs = symbolPerformance.reduce((sum, row) => sum + Math.abs(Math.min(0, Number(row.pnl || 0))), 0);
   const profitFactor = totalLossAbs > 0 ? totalProfit / totalLossAbs : (totalProfit > 0 ? totalProfit : 0);
-  const highestDayPct = Number(metrics.topDailyPercentOfTarget || 0);
+  const highestDayPct = Number(metrics.consistencyScorePercent ?? metrics.topDailyPercentOfTarget ?? 0);
   const dailyDrawdownPct = Number(metrics.dailyDrawdownPercent || 0);
   const profitTarget = Number(metrics.profitTarget || 0);
   const currentBalance = Number(metrics.currentBalance || 0);
   const totalPnl = Number(metrics.totalPnL || 0);
-  const dailyLossRemainingUsd = Math.max(0, (initialBalance * 0.05) - ((dailyDrawdownPct / 100) * initialBalance));
+  const dailyLossLimitUsd = (initialBalance * dailyLossLimitPercent) / 100;
+  const dailyLossUsedUsd = (dailyDrawdownPct / 100) * initialBalance;
+  const dailyLossRemainingUsd = Math.max(0, dailyLossLimitUsd - dailyLossUsedUsd);
   const profitProgressValue = Math.max(0, Math.min(profitTarget, totalPnl));
-  const consistencyState = highestDayPct > consistencyLimit ? 'Breach' : highestDayPct >= Math.max(0, consistencyLimit - 2) ? 'Warning' : 'Safe';
+  const consistencyState = !consistencyEnabled
+    ? 'Disabled'
+    : highestDayPct > consistencyLimit
+    ? 'Breach'
+    : highestDayPct >= Math.max(0, consistencyLimit - 2)
+    ? 'Warning'
+    : 'Safe';
   const consistencyStateColor = consistencyState === 'Breach' ? '#EF4444' : consistencyState === 'Warning' ? '#F59E0B' : '#10B981';
 
   const bestTradingDay = winLossSeries.reduce((best, row) => {
@@ -237,9 +311,18 @@ function Dashboard() {
     return pnlApprox > best ? pnlApprox : best;
   }, 0) * 100;
   const maxDrawdownUsd = (dailyDrawdownPct / 100) * initialBalance;
+  const guideProgress = {
+    accountCreated: Boolean(hasAccount && accountId),
+    rulesConfigured: Boolean(hasAccount && profitTarget > 0 && dailyLossLimitPercent > 0 && maxLossLimitPercent > 0 && (!consistencyEnabled || consistencyLimit > 0)),
+    firstTradeAdded: totalTrades > 0,
+    firstImportCompleted: Boolean(latestImport && latestImport.importedCount > 0),
+  };
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ backgroundColor: bgColor }}>
+    <div
+      className={`flex h-screen overflow-hidden app-shell-themed ${theme === 'dark' ? 'is-dark' : 'is-light'}`}
+      style={{ backgroundColor: bgColor }}
+    >
       {/* Desktop Sidebar (unchanged look) */}
       {!isMobile ? (
         <Sidebar expanded={isDesktopSidebarExpanded} />
@@ -279,11 +362,16 @@ function Dashboard() {
           onSelectAccount={switchAccount}
           onAddAccount={() => setIsOnboardingOpen(true)}
           onOpenGuide={() => setIsOnboardingOpen(true)}
+          onOpenAddTrade={() => setIsAddTradeOpen(true)}
+          onOpenImport={() => setIsImportOpen(true)}
+          helpMode={helpMode}
+          onToggleHelpMode={() => setHelpMode((prev) => !prev)}
+          guideProgress={guideProgress}
         />
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto">
-            <div className="space-y-6" style={{ padding: isMobile ? '16px' : '32px' }}>
+        <div className="flex-1 overflow-y-auto app-shell-content">
+            <div className="space-y-6 panel-content-wrap" style={{ padding: isMobile ? '16px' : '24px' }}>
               {/* Filters Section */}
             <FilterBar
               onAddTradeClick={() => setIsAddTradeOpen(true)}
@@ -293,21 +381,71 @@ function Dashboard() {
               undoingLatestImport={undoingLatestImport}
             />
 
+            {portfolioRows.length > 1 ? (
+              <div className="rounded-lg border p-4" style={{ borderColor: theme === 'dark' ? '#2A2D35' : '#E5E7EB', backgroundColor: theme === 'dark' ? '#1E2025' : '#FFFFFF' }}>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 style={{ color: theme === 'dark' ? '#F4F7FB' : '#0F172A' }}>Multi-Account Comparison</h3>
+                  <button
+                    type="button"
+                    onClick={() => refreshPortfolio()}
+                    style={{ color: theme === 'dark' ? '#9CA3AF' : '#64748B', fontSize: 12 }}
+                  >
+                    Refresh
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr style={{ borderBottom: `1px solid ${theme === 'dark' ? '#2A2D35' : '#E5E7EB'}` }}>
+                        <th className="text-left py-2" style={{ color: theme === 'dark' ? '#9CA3AF' : '#64748B' }}>Account</th>
+                        <th className="text-right py-2" style={{ color: theme === 'dark' ? '#9CA3AF' : '#64748B' }}>Balance</th>
+                        <th className="text-right py-2" style={{ color: theme === 'dark' ? '#9CA3AF' : '#64748B' }}>PnL</th>
+                        <th className="text-right py-2" style={{ color: theme === 'dark' ? '#9CA3AF' : '#64748B' }}>Consistency</th>
+                        <th className="text-right py-2" style={{ color: theme === 'dark' ? '#9CA3AF' : '#64748B' }}>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {portfolioRows.map((row) => (
+                        <tr key={row.id} style={{ borderBottom: `1px solid ${theme === 'dark' ? '#2A2D35' : '#E5E7EB'}` }}>
+                          <td className="py-2" style={{ color: theme === 'dark' ? '#F4F7FB' : '#0F172A' }}>{row.name}</td>
+                          <td className="py-2 text-right" style={{ color: theme === 'dark' ? '#F4F7FB' : '#0F172A' }}>${row.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                          <td className="py-2 text-right" style={{ color: row.pnl >= 0 ? '#10B981' : '#EF4444' }}>{row.pnl >= 0 ? '+' : ''}${Math.abs(row.pnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                          <td className="py-2 text-right" style={{ color: theme === 'dark' ? '#F4F7FB' : '#0F172A' }}>{row.consistency.toFixed(1)}%</td>
+                          <td className="py-2 text-right" style={{ color: row.status === 'breached' ? '#EF4444' : '#10B981' }}>{row.status}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
+
             {/* Risk At A Glance Row */}
             <div className="dashboard-row-4">
               <StatCard
                 title="Account Equity"
+                tooltip="Live account balance after all recorded trades."
+                helpMode={helpMode}
                 value={`$${currentBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                 subtitle={`Initial: $${initialBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
               />
               <StatCard
                 title="Daily Loss Remaining"
+                tooltip="Remaining daily buffer before hitting your daily drawdown limit."
+                helpMode={helpMode}
                 value={`$${dailyLossRemainingUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-                subtitle="5% Max Daily"
-                dangerBar={{ percentage: Math.max(0, Math.min(100, dailyDrawdownPct * 20)) }}
+                subtitle={`${dailyLossLimitPercent}% Max Daily`}
+                dangerBar={{
+                  percentage: Math.max(
+                    0,
+                    Math.min(100, dailyLossLimitPercent > 0 ? (dailyDrawdownPct / dailyLossLimitPercent) * 100 : 0)
+                  ),
+                }}
               />
               <StatCard
                 title="Profit Target Progress"
+                tooltip="How much of your target profit has been achieved."
+                helpMode={helpMode}
                 value={`$${profitProgressValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} / $${profitTarget.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                 subtitle={`${profitTarget > 0 ? ((profitProgressValue / profitTarget) * 100).toFixed(1) : '0.0'}% Complete`}
                 progressBar={{
@@ -318,8 +456,10 @@ function Dashboard() {
               />
               <StatCard
                 title="Consistency Score"
+                tooltip="Highest 24h day profit as a percentage of total profit. Lower is safer."
+                helpMode={helpMode}
                 value={`${consistencyState} (${highestDayPct.toFixed(1)}%)`}
-                subtitle="Max Day vs Total"
+                subtitle={consistencyEnabled ? 'Highest 24h Day vs Total' : 'Consistency checks disabled'}
                 statusIndicator={{
                   color: consistencyStateColor,
                   label: consistencyState,
@@ -346,7 +486,7 @@ function Dashboard() {
 
               {/* Middle Column - Consistency Meter */}
               <div>
-                <ConsistencyMeter percentage={highestDayPct} threshold={consistencyLimit} />
+                <ConsistencyMeter percentage={highestDayPct} threshold={consistencyLimit} helpMode={helpMode} />
               </div>
 
               {/* Right Column - Quick Stats */}
@@ -367,7 +507,13 @@ function Dashboard() {
 
             {/* Performance Analysis Row */}
             <div className="dashboard-row-2">
-              <WinLossDistribution data={winLossSeries} />
+              <WinLossDistribution
+                data={winLossSeries}
+                accountId={accountId}
+                refreshKey={recentTradesRefreshKey}
+                days={5}
+                helpMode={helpMode}
+              />
               <PerformanceBySymbol
                 data={symbolPerformance.map((row) => ({
                   symbol: row.symbol,
@@ -386,7 +532,7 @@ function Dashboard() {
                 <RecentTrades accountId={accountId} refreshKey={recentTradesRefreshKey} />
               </div>
               <div className="calendar-slot">
-                <TradingCalendar empty={!hasAccount || totalTrades === 0} />
+                <TradingCalendar accountId={accountId} refreshKey={recentTradesRefreshKey} helpMode={helpMode} />
               </div>
             </div>
 
@@ -402,6 +548,9 @@ function Dashboard() {
           refreshDashboard();
         }}
         onNotify={pushToast}
+        onOpenGuide={() => setIsOnboardingOpen(true)}
+        helpMode={helpMode}
+        guideProgress={guideProgress}
         theme={theme}
       />
       <ImportTradesModal
@@ -413,10 +562,13 @@ function Dashboard() {
           refreshDashboard();
         }}
         onNotify={pushToast}
+        onOpenGuide={() => setIsOnboardingOpen(true)}
+        guideProgress={guideProgress}
       />
       <OnboardingWizard
         open={isOnboardingOpen}
         theme={theme}
+        helpMode={helpMode}
         onClose={() => setIsOnboardingOpen(false)}
         onComplete={() => {
           setIsOnboardingOpen(false);

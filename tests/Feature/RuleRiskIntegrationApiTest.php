@@ -31,7 +31,7 @@ class RuleRiskIntegrationApiTest extends TestCase
                 'starting_balance' => 50000,
                 'profit_target_percent' => 8,
                 'max_daily_loss_percent' => 4,
-                'consistency_rule_type' => '40',
+                'consistency_rule_type' => 'custom',
                 'consistency_threshold_percent' => 35,
                 'max_single_trade_percent' => 2,
             ])

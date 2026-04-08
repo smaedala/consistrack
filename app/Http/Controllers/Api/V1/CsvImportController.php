@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Exceptions\TradeImportValidationException;
 use App\Http\Controllers\Controller;
 use App\Models\TradingAccount;
 use App\Services\ActivityLogService;
@@ -22,6 +23,7 @@ class CsvImportController extends Controller
             'account_id' => 'nullable|exists:trading_accounts,id',
             'csv_file' => 'nullable|file|mimes:csv,txt|max:10240',
             'parsed_trades' => 'nullable|array',
+            'idempotency_key' => 'nullable|string|max:120',
         ]);
 
         $hasCsv = $request->hasFile('csv_file');
@@ -55,6 +57,7 @@ class CsvImportController extends Controller
         try {
             // If client pre-parsed trades are provided, use them
             $tradeImportService = new TradeImportService();
+            $idempotencyKey = trim((string) ($request->header('Idempotency-Key') ?: ($validated['idempotency_key'] ?? ''))) ?: null;
 
             if ($request->has('parsed_trades')) {
                 $parsed = $request->input('parsed_trades');
@@ -65,7 +68,7 @@ class CsvImportController extends Controller
                     ], 400);
                 }
 
-                $result = $tradeImportService->import($parsed, $account, 'parsed');
+                $result = $tradeImportService->import($parsed, $account, 'parsed', null, $idempotencyKey);
                 app(ActivityLogService::class)->log(
                     $account,
                     $user,
@@ -73,6 +76,7 @@ class CsvImportController extends Controller
                     'Parsed trades import completed',
                     [
                         'source' => 'parsed',
+                        'idempotent_replay' => (bool) ($result['idempotent_replay'] ?? false),
                         'batch_uuid' => $result['batch_uuid'] ?? null,
                         'imported' => $result['imported'] ?? 0,
                         'duplicates' => $result['duplicates'] ?? 0,
@@ -104,7 +108,8 @@ class CsvImportController extends Controller
                     $parseResult['trades'],
                     $account,
                     'csv',
-                    $request->file('csv_file')->getClientOriginalName()
+                    $request->file('csv_file')->getClientOriginalName(),
+                    $idempotencyKey
                 );
                 app(ActivityLogService::class)->log(
                     $account,
@@ -113,6 +118,7 @@ class CsvImportController extends Controller
                     'CSV import completed',
                     [
                         'source' => 'csv',
+                        'idempotent_replay' => (bool) ($result['idempotent_replay'] ?? false),
                         'file_name' => $request->file('csv_file')->getClientOriginalName(),
                         'batch_uuid' => $result['batch_uuid'] ?? null,
                         'imported' => $result['imported'] ?? 0,
@@ -131,6 +137,15 @@ class CsvImportController extends Controller
                 'success' => false,
                 'message' => 'No csv_file or parsed_trades provided',
             ], 400);
+        } catch (TradeImportValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'data' => [
+                    'batch_uuid' => $e->batchUuid,
+                    'errors' => $e->rowErrors,
+                ],
+            ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,

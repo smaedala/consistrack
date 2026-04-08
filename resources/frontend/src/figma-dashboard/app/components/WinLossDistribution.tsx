@@ -1,3 +1,6 @@
+import { useEffect, useMemo, useState } from 'react';
+import axios from 'axios';
+import { CircleHelp } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { useTheme } from '../context/ThemeContext';
 
@@ -9,10 +12,34 @@ interface WinLossItem {
 
 interface WinLossDistributionProps {
   data?: WinLossItem[];
+  accountId?: number | null;
+  refreshKey?: number;
+  days?: number;
+  helpMode?: boolean;
 }
 
-export function WinLossDistribution({ data = [] }: WinLossDistributionProps) {
+function Hint({ text, color, helpMode = false }: { text: string; color: string; helpMode?: boolean }) {
+  return (
+    <span
+      className="inline-flex items-center ml-1 align-middle cursor-help"
+      title={text}
+      aria-label={text}
+      style={{
+        color: helpMode ? '#00F2FE' : color,
+        opacity: 0.85,
+        filter: helpMode ? 'drop-shadow(0 0 6px rgba(0,242,254,0.45))' : 'none',
+      }}
+    >
+      <CircleHelp size={13} />
+    </span>
+  );
+}
+
+export function WinLossDistribution({ data = [], accountId = null, refreshKey = 0, days = 5, helpMode = false }: WinLossDistributionProps) {
   const { theme } = useTheme();
+  const [liveData, setLiveData] = useState<WinLossItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const colors = {
     dark: {
@@ -32,7 +59,47 @@ export function WinLossDistribution({ data = [] }: WinLossDistributionProps) {
   };
 
   const c = colors[theme];
-  const rows = data.length > 0 ? data : [{ day: 'Day 1', wins: 0, losses: 0 }];
+  useEffect(() => {
+    if (!accountId) {
+      setLiveData([]);
+      setError(null);
+      return;
+    }
+
+    let active = true;
+    const fetchLive = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await axios.get(`/accounts/${accountId}/dashboard/win-loss-distribution`, {
+          params: { days },
+        });
+        if (!active) return;
+        const series = Array.isArray(res.data?.data?.series) ? res.data.data.series : [];
+        setLiveData(series);
+      } catch (err: any) {
+        if (!active) return;
+        setError(err?.response?.data?.message || 'Failed to load Win/Loss data');
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    fetchLive();
+    const timer = window.setInterval(fetchLive, 30000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [accountId, refreshKey, days]);
+
+  const sourceRows = useMemo(() => {
+    if (liveData.length > 0) return liveData;
+    if (data.length > 0) return data;
+    return [{ day: 'Day 1', wins: 0, losses: 0 }];
+  }, [liveData, data]);
+
+  const rows = sourceRows;
   const totalWins = rows.reduce((sum, day) => sum + day.wins, 0);
   const totalLosses = rows.reduce((sum, day) => sum + day.losses, 0);
   const total = Math.max(totalWins + totalLosses, 1);
@@ -66,9 +133,23 @@ export function WinLossDistribution({ data = [] }: WinLossDistributionProps) {
   return (
     <div
       className="rounded-lg p-4 sm:p-6 border dashboard-equal-height-card h-full flex flex-col winloss-card"
-      style={{ backgroundColor: c.bg, borderColor: c.border }}
+      style={{
+        backgroundColor: c.bg,
+        borderColor: c.border,
+        boxShadow: helpMode ? '0 0 0 1px rgba(0,242,254,0.30), 0 0 18px rgba(0,242,254,0.10)' : 'none',
+      }}
     >
-      <h3 className="text-lg mb-4" style={{ color: c.text }}>Win/Loss Distribution</h3>
+      <h3 className="text-lg mb-4 inline-flex items-center" style={{ color: c.text }}>
+        Win/Loss Distribution
+        <Hint
+          color={c.subText}
+          helpMode={helpMode}
+          text="Top chart compares win vs loss counts by day. Donut shows overall win-rate mix."
+        />
+      </h3>
+      <p className="text-xs mb-2" style={{ color: error ? '#EF4444' : c.subText }}>
+        {loading ? 'Syncing live data...' : (error || `Last ${days} trading days`)}
+      </p>
 
       <div className="flex-1 min-h-0 grid grid-rows-[1fr_1fr] gap-4 winloss-card-grid">
         <div className="min-h-0">

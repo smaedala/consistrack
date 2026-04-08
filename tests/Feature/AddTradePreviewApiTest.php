@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Trade;
 use App\Models\TradingAccount;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -16,8 +17,8 @@ class AddTradePreviewApiTest extends TestCase
     {
         [$user, $account, $token] = $this->makeUserAccountToken(20);
 
-        // profit_target factory default: 4000; 20% limit => max allowed day profit = 800
-        $this->seedDayPnls($account, [600, 400, 300]);
+        // Max day 100 / total 600 = 16.67% -> safe for 20% limit.
+        $this->seedDayPnls($account, [100, 100, 100, 100, 100, 100]);
 
         $this->withToken($token)
             ->postJson("/api/v1/accounts/{$account->id}/trades/preview", [
@@ -33,8 +34,8 @@ class AddTradePreviewApiTest extends TestCase
     {
         [$user, $account, $token] = $this->makeUserAccountToken(20);
 
-        // Caution starts at (limit - 2)% => 18% of 4000 = 720
-        $this->seedDayPnls($account, [760, 300, 200]);
+        // Max day 180 / total 1000 = 18% -> caution zone for 20% limit.
+        $this->seedDayPnls($account, [180, 170, 170, 170, 170, 140]);
 
         $this->withToken($token)
             ->postJson("/api/v1/accounts/{$account->id}/trades/preview", [
@@ -50,7 +51,8 @@ class AddTradePreviewApiTest extends TestCase
     {
         [$user, $account, $token] = $this->makeUserAccountToken(20);
 
-        $this->seedDayPnls($account, [900, 250, 100]);
+        // Max day 250 / total 1000 = 25% -> breach for 20% limit.
+        $this->seedDayPnls($account, [250, 250, 250, 250]);
 
         $this->withToken($token)
             ->postJson("/api/v1/accounts/{$account->id}/trades/preview", [
@@ -77,12 +79,12 @@ class AddTradePreviewApiTest extends TestCase
             ->assertForbidden();
     }
 
-    public function test_preview_caps_consistency_percentage_at_100_for_ui_stability(): void
+    public function test_preview_returns_exact_consistency_percentage_without_artificial_cap(): void
     {
         [$user, $account, $token] = $this->makeUserAccountToken(20);
 
-        // Max day above target should cap display at 100 while preserving raw >100.
-        $this->seedDayPnls($account, [5000]);
+        // Max day 500 / total 100 = 500% (after loss day), should remain exact.
+        $this->seedDayPnls($account, [500, -400]);
 
         $this->withToken($token)
             ->postJson("/api/v1/accounts/{$account->id}/trades/preview", [
@@ -91,9 +93,9 @@ class AddTradePreviewApiTest extends TestCase
             ])
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('data.raw_projected_consistency_percent', 125)
-            ->assertJsonPath('data.projected_consistency_percent', 100)
-            ->assertJsonPath('data.max_allowed_day_profit', 800);
+            ->assertJsonPath('data.raw_projected_consistency_percent', 500)
+            ->assertJsonPath('data.projected_consistency_percent', 500)
+            ->assertJsonPath('data.max_allowed_day_profit', 20);
     }
 
     private function makeUserAccountToken(int $consistencyLimitPercent): array
@@ -122,5 +124,43 @@ class AddTradePreviewApiTest extends TestCase
                 'close_time' => now()->subDays($index + 1),
             ]);
         }
+    }
+
+    public function test_preview_uses_24h_calendar_day_for_consistency_projection(): void
+    {
+        [$user, $account, $token] = $this->makeUserAccountToken(40);
+        $account->update([
+            'timezone' => 'UTC',
+            'trading_day_reset_timezone' => 'UTC',
+            'trading_day_reset_time' => '17:00',
+            'profit_target' => 4000,
+        ]);
+
+        Trade::factory()->create([
+            'account_id' => $account->id,
+            'symbol' => 'EURUSD',
+            'type' => 'buy',
+            'pnl' => 1000,
+            'close_time' => Carbon::parse('2026-04-01 16:30:00', 'UTC'),
+        ]);
+
+        Trade::factory()->create([
+            'account_id' => $account->id,
+            'symbol' => 'EURUSD',
+            'type' => 'buy',
+            'pnl' => 1000,
+            'close_time' => Carbon::parse('2026-04-01 17:30:00', 'UTC'),
+        ]);
+
+        $this->withToken($token)
+            ->postJson("/api/v1/accounts/{$account->id}/trades/preview", [
+                'pnl' => 0,
+                'close_time' => Carbon::parse('2026-04-01 18:00:00', 'UTC')->toISOString(),
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.projected_max_day_profit', 2000)
+            ->assertJsonPath('data.projected_total_profit', 2000)
+            ->assertJsonPath('data.projected_consistency_percent', 100);
     }
 }

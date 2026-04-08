@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ChevronDown, Bell, Sun, Moon, Menu, Plus } from 'lucide-react';
+import { ChevronDown, Bell, Sun, Moon, Menu, Plus, CircleCheck, Circle, CircleHelp } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 
 interface HeaderProps {
@@ -11,6 +11,16 @@ interface HeaderProps {
   onSelectAccount?: (id: number) => void;
   onAddAccount?: () => void;
   onOpenGuide?: () => void;
+  onOpenAddTrade?: () => void;
+  onOpenImport?: () => void;
+  helpMode?: boolean;
+  onToggleHelpMode?: () => void;
+  guideProgress?: {
+    accountCreated: boolean;
+    rulesConfigured: boolean;
+    firstTradeAdded: boolean;
+    firstImportCompleted: boolean;
+  };
 }
 
 export function Header({
@@ -22,6 +32,11 @@ export function Header({
   onSelectAccount,
   onAddAccount,
   onOpenGuide,
+  onOpenAddTrade,
+  onOpenImport,
+  helpMode = false,
+  onToggleHelpMode,
+  guideProgress,
 }: HeaderProps) {
   const { theme, toggleTheme } = useTheme();
   const [isAccountOpen, setIsAccountOpen] = useState(false);
@@ -47,6 +62,19 @@ export function Header({
   };
 
   const c = colors[theme];
+  const progress = guideProgress ?? {
+    accountCreated: false,
+    rulesConfigured: false,
+    firstTradeAdded: false,
+    firstImportCompleted: false,
+  };
+  const checklist = [
+    { key: 'account', label: 'Create account profile', done: progress.accountCreated },
+    { key: 'rules', label: 'Configure risk rules', done: progress.rulesConfigured },
+    { key: 'trade', label: 'Add first trade', done: progress.firstTradeAdded },
+    { key: 'import', label: 'Complete first import', done: progress.firstImportCompleted },
+  ];
+  const completedCount = checklist.filter((item) => item.done).length;
   const activeLabel = useMemo(() => {
     if (activeAccountId !== null) {
       const found = accounts.find((a) => a.id === activeAccountId);
@@ -150,6 +178,20 @@ export function Header({
         ) : null}
 
         {/* Theme Toggle */}
+        <button
+          onClick={onToggleHelpMode}
+          className="h-10 rounded-lg transition-colors flex items-center justify-center px-3 gap-1.5 dash-hover-control"
+          style={{
+            backgroundColor: helpMode ? (theme === 'dark' ? 'rgba(0,242,254,0.15)' : 'rgba(14,165,233,0.14)') : c.cardBg,
+            border: `1px solid ${helpMode ? (theme === 'dark' ? '#00F2FE88' : '#0EA5E988') : c.border}`,
+          }}
+          title="Toggle Help Mode"
+          aria-label="Toggle Help Mode"
+        >
+          <CircleHelp className="w-4 h-4" style={{ color: helpMode ? (theme === 'dark' ? '#00F2FE' : '#0EA5E9') : c.subText }} />
+          {!isMobile ? <span className="text-xs" style={{ color: helpMode ? c.text : c.subText }}>{helpMode ? 'Help On' : 'Help'}</span> : null}
+        </button>
+
         <button 
           onClick={toggleTheme}
           className="w-10 h-10 rounded-lg transition-colors flex items-center justify-center dash-hover-control"
@@ -184,9 +226,25 @@ export function Header({
             >
               <div className="px-3 py-2 border-b" style={{ borderColor: c.border }}>
                 <p className="text-sm font-medium" style={{ color: c.text }}>Welcome & Guide</p>
-                <p className="text-xs" style={{ color: c.subText }}>Quick help to use everything smoothly.</p>
+                <p className="text-xs" style={{ color: c.subText }}>
+                  Setup progress: {completedCount}/4 complete
+                </p>
               </div>
               <div className="p-2 space-y-1">
+                <div className="rounded-lg border p-2" style={{ borderColor: c.border, backgroundColor: theme === 'dark' ? '#111622' : '#F8FAFC' }}>
+                  {checklist.map((item) => (
+                    <div key={item.key} className="flex items-center gap-2 py-1">
+                      {item.done ? (
+                        <CircleCheck className="w-4 h-4" style={{ color: '#10B981' }} />
+                      ) : (
+                        <Circle className="w-4 h-4" style={{ color: c.subText }} />
+                      )}
+                      <span className="text-xs" style={{ color: item.done ? c.text : c.subText }}>
+                        {item.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
                 <button
                   type="button"
                   className="w-full text-left px-3 py-2 rounded-lg text-sm"
@@ -196,14 +254,34 @@ export function Header({
                     setIsNoticeOpen(false);
                   }}
                 >
-                  Start setup guide (new account flow)
+                  Open setup wizard
                 </button>
-                <div className="px-3 py-2 rounded-lg text-xs" style={{ color: c.subText, backgroundColor: theme === 'dark' ? '#111622' : '#F8FAFC' }}>
-                  Tip: Add Account → Set Rules → Add Trade/Import CSV → Track consistency live.
-                </div>
-                <div className="px-3 py-2 rounded-lg text-xs" style={{ color: c.subText, backgroundColor: theme === 'dark' ? '#111622' : '#F8FAFC' }}>
-                  Tip: Use Active Account dropdown to switch accounts in real-time.
-                </div>
+                {!progress.firstTradeAdded ? (
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-2 rounded-lg text-sm"
+                    style={{ color: theme === 'dark' ? '#00F2FE' : '#0EA5E9', backgroundColor: theme === 'dark' ? '#111622' : '#F8FAFC' }}
+                    onClick={() => {
+                      onOpenAddTrade?.();
+                      setIsNoticeOpen(false);
+                    }}
+                  >
+                    Quick action: Add your first trade
+                  </button>
+                ) : null}
+                {!progress.firstImportCompleted ? (
+                  <button
+                    type="button"
+                    className="w-full text-left px-3 py-2 rounded-lg text-sm"
+                    style={{ color: theme === 'dark' ? '#00F2FE' : '#0EA5E9', backgroundColor: theme === 'dark' ? '#111622' : '#F8FAFC' }}
+                    onClick={() => {
+                      onOpenImport?.();
+                      setIsNoticeOpen(false);
+                    }}
+                  >
+                    Quick action: Import MT4/MT5 history
+                  </button>
+                ) : null}
               </div>
             </div>
           ) : null}
